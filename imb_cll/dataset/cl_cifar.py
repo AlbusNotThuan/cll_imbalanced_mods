@@ -27,8 +27,6 @@ class CLCIFAR10(BaseDataset, torchvision.datasets.CIFAR10):
         if transform is None:
             if train:
                 if augment:
-                    import pdb
-                    pdb.set_trace()
                     transform = transforms.Compose(
                         [
                             transforms.RandomHorizontalFlip(),

@@ -198,8 +198,8 @@ def train(args):
         top5 = AverageMeter('Acc@5', ':6.2f')
 
         if epoch > 250:
-            learning_rate = adjust_learning_rate(epochs, epoch, lr)
-            # learning_rate = lr
+            # learning_rate = adjust_learning_rate(epochs, epoch, lr)
+            learning_rate = lr
             optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
             for inputs, labels, true_labels in trainloader:
                 inputs, labels, true_labels = inputs.to(device), labels.to(device), true_labels.to(device)
