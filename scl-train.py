@@ -14,7 +14,7 @@ import argparse
 from imb_cll.dataset.dataset import prepare_dataset, CLCustomDataset
 from imb_cll.utils.utils import adjust_learning_rate, AverageMeter, compute_metrics_and_record
 from imb_cll.utils.metrics import accuracy
-from imb_cll.utils.cl_augmentation import mixup_cl_data, mixup_data
+from imb_cll.utils.cl_augmentation import mixup_cl_data, mixup_data, aug_intra_class
 from imb_cll.models.models import get_modified_resnet18, get_resnet18
 
 num_workers = 4
@@ -95,6 +95,8 @@ def train(args):
     epochs = args.n_epoch
     n_weight = args.weighting
     mixup = args.mixup
+    intra_class = args.intra_class
+    cl_aug = args.cl_aug
 
     best_acc1 = 0.
 
@@ -157,9 +159,11 @@ def train(args):
                 outputs = model(inputs)
 
                 if mixup:
-                    # Mixup Data
-                    # _input_mix, target_a, target_b, lam = mixup_data(inputs, labels)
-                    _input_mix, target_a, target_b, lam = mixup_cl_data(inputs, labels, true_labels, device)
+                    if intra_class:
+                        _input_mix, target_a, target_b, lam = aug_intra_class(inputs, labels, device)
+                    if cl_aug:
+                        _input_mix, target_a, target_b, lam = mixup_cl_data(inputs, labels, true_labels, device)
+
                     output_mix = model(_input_mix)
                     max_prob_mix, target_mix = torch.max(output_mix, dim=1)
 
@@ -281,7 +285,11 @@ def train(args):
                 if mixup:
                     # Mixup Data
                     # _input_mix, target_a, target_b, lam = mixup_data(inputs, labels)
-                    _input_mix, target_a, target_b, lam = mixup_cl_data(inputs, labels, true_labels, device)
+                    if intra_class:
+                        _input_mix, target_a, target_b, lam = aug_intra_class(inputs, labels, device)
+                    if cl_aug:
+                        _input_mix, target_a, target_b, lam = mixup_cl_data(inputs, labels, true_labels, device)
+
                     output_mix = model(_input_mix)
                     # import pdb
                     # pdb.set_trace()
@@ -417,6 +425,8 @@ if __name__ == "__main__":
     parser.add_argument('--imb_factor', type=float, default=1.0)
     parser.add_argument('--weighting', type=int, default=1)
     parser.add_argument('--mixup', type=str, default='false')
+    parser.add_argument('--intra_class', type=str, default='false')
+    parser.add_argument('--cl_aug', type=str, default='false')
 
     args = parser.parse_args()
 
