@@ -14,27 +14,11 @@ import argparse
 from imb_cll.dataset.dataset import prepare_dataset, CLCustomDataset
 from imb_cll.utils.utils import adjust_learning_rate, AverageMeter, compute_metrics_and_record
 from imb_cll.utils.metrics import accuracy
+from imb_cll.utils.cl_augmentation import mixup_cl_data, mixup_data
+from imb_cll.models.models import get_modified_resnet18, get_resnet18
 
-num_classes = 10
 num_workers = 4
 device = "cuda"
-
-def get_resnet18():
-    # resnet = torchvision.models.resnet18(weights=None)
-    resnet = torchvision.models.resnet18()
-    # resnet.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
-    # resnet.maxpool = nn.Identity()
-    num_ftrs = resnet.fc.in_features
-    resnet.fc = nn.Linear(num_ftrs, num_classes)
-    return resnet
-
-def get_modified_resnet18():
-    resnet = torchvision.models.resnet18(weights=None)
-    resnet.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
-    resnet.maxpool = nn.Identity()
-    num_ftrs = resnet.fc.in_features
-    resnet.fc = nn.Linear(num_ftrs, num_classes)
-    return resnet
 
 def validate(model, dataloader, eval_n_epoch, epoch):
 
@@ -89,7 +73,7 @@ def validate(model, dataloader, eval_n_epoch, epoch):
     else:
         return top1.avg
 
-def get_dataset_T(dataset):
+def get_dataset_T(dataset, num_classes):
     dataset_T = np.zeros((num_classes,num_classes))
     class_count = np.zeros(num_classes)
     for i in range(len(dataset)):
@@ -98,45 +82,6 @@ def get_dataset_T(dataset):
     for i in range(num_classes):
         dataset_T[i] /= class_count[i]
     return dataset_T
-
-def mixup_data(x, y, alpha=1.0):
-    '''Returns mixed inputs, pairs of targets, and lambda'''
-    if alpha > 0:
-        lam = np.random.beta(alpha, alpha)
-    else:
-        lam = 1
-
-    batch_size = x.size()[0]
-    index = torch.randperm(batch_size)
-
-    mixed_x = lam * x + (1 - lam) * x[index, :]
-    y_a, y_b = y, y[index]
-
-    return mixed_x, y_a, y_b, lam
-
-def mixup_cl_data(x, y, ytrue, device, alpha=1.0):
-    '''Returns mixed inputs, pairs of targets, and lambda'''
-    if alpha > 0:
-        lam = np.random.beta(alpha, alpha)
-    else:
-        lam = 1
-    
-    batch_size = x.size()[0]
-    mixed_x = torch.zeros_like(x).to(device)
-    y_a, y_b = torch.zeros_like(y).to(device), torch.zeros_like(y).to(device)  #to(device)
-    for i in range(batch_size):
-        while(True):
-            j = random.randint(0, batch_size - 1)
-            if y[i] != ytrue[j] and y[j] != ytrue[i]:
-                mixed_x[i] = lam * x[i] + (1 - lam) * x[j]
-                y_a[i], y_b[i] = y[i], y[j]
-                break
-    return mixed_x, y_a, y_b, lam
-
-def mixup_criterion(criterion, pred, y_a, y_b, lam):
-    y_a = y_a.squeeze()
-    y_b = y_b.squeeze()
-    return lam * criterion(pred, y_a) + (1 - lam) * criterion(pred, y_b)
 
 def train(args):
     dataset_name = args.dataset_name
@@ -170,9 +115,9 @@ def train(args):
     testloader = DataLoader(testset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
     if args.model == "resnet18":
-        model = get_resnet18().to(device)
+        model = get_resnet18(num_classes).to(device)
     elif args.model == "m-resnet18":
-        model = get_modified_resnet18().to(device)
+        model = get_modified_resnet18(num_classes).to(device)
     else:
         raise NotImplementedError
 
