@@ -131,8 +131,6 @@ def mixup_cl_data(x, y, ytrue, device, alpha=1.0):
                 mixed_x[i] = lam * x[i] + (1 - lam) * x[j]
                 y_a[i], y_b[i] = y[i], y[j]
                 break
-    # import pdb
-    # pdb.set_trace()
     return mixed_x, y_a, y_b, lam
 
 def mixup_criterion(criterion, pred, y_a, y_b, lam):
@@ -168,20 +166,7 @@ def train(args):
     else:
         raise NotImplementedError
 
-    # Print the complementary label distribution T
-
-    # dataset_T = get_dataset_T(trainset)
-    # np.set_printoptions(floatmode='fixed', precision=2)
-    # print("Dataset's transition matrix T:")
-    # print(dataset_T)
-    # dataset_T = torch.tensor(dataset_T, dtype=torch.float).to(device)
-
-    # # Set Q for forward algorithm
-    # Q = dataset_T
-
     trainloader = DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-    # import pdb
-    # pdb.set_trace()
     testloader = DataLoader(testset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
     if args.model == "resnet18":
@@ -190,8 +175,6 @@ def train(args):
         model = get_modified_resnet18().to(device)
     else:
         raise NotImplementedError
-
-    # optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
 
     # with tqdm(range(epochs), unit="epoch") as tepoch:
         # tepoch.set_description(f"lr={lr}")
@@ -345,15 +328,11 @@ def train(args):
             optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
             for i, (inputs, labels, true_labels) in enumerate(trainloader):
                 inputs, labels, true_labels = inputs.to(device), labels.to(device), true_labels.to(device)
-                # import pdb
-                # pdb.set_trace()
                 
                 # Two kinds of output
                 optimizer.zero_grad()
                 outputs = model(inputs)
 
-                # criterion = nn.CrossEntropyLoss().to(device)
-                # loss = mixup_criterion(criterion, output_mix, target_a,target_b, lam).mean()
                 if mixup:
                     # Mixup Data
                     # _input_mix, target_a, target_b, lam = mixup_data(inputs, labels)
@@ -376,8 +355,6 @@ def train(args):
                     
                     elif algo == "scl-nl":
                         p = (1 - F.softmax(output_mix, dim=1) + 1e-6).log()
-                        # import pdb
-                        # pdb.set_trace()
                         target_a = target_a.squeeze()
                         target_b = target_b.squeeze()
                         loss = lam * F.nll_loss(p, target_a) + (1 - lam) * F.nll_loss(p, target_b)
@@ -439,8 +416,6 @@ def train(args):
                     # log_training.write(output + '\n')
                     # log_training.flush()
 
-            # import pdb
-            # pdb.set_trace()
             compute_metrics_and_record(all_preds,
                                     all_targets,
                                     losses,
