@@ -11,6 +11,7 @@ class CLCIFAR10(BaseDataset, torchvision.datasets.CIFAR10):
     def __init__(
         self,
         root="./data/cifar10",
+        data_type=None,
         train=True,
         transform=None,
         target_transform=None,
@@ -24,6 +25,7 @@ class CLCIFAR10(BaseDataset, torchvision.datasets.CIFAR10):
         self.num_classes = 10
         self.input_dim = 3 * 32 * 32
         self.multi_label = multi_label
+        self.data_type = data_type
         if transform is None:
             if train:
                 if augment:
@@ -71,13 +73,6 @@ class CLCIFAR10(BaseDataset, torchvision.datasets.CIFAR10):
                 self.data = self.data[:train_len]
                 self.targets = self.targets[:train_len]
             self.gen_complementary_target()
-        else:
-            if max_train_samples: #limit the size of the training dataset to max_train_samples
-                test_len = min(len(self.data), max_train_samples)
-                self.data = self.data[:test_len]
-                self.targets = self.targets[:test_len]
-            self.gen_complementary_target()
-
 
     def __getitem__(self, index: int):
         """
@@ -87,7 +82,10 @@ class CLCIFAR10(BaseDataset, torchvision.datasets.CIFAR10):
         Returns:
             tuple: (image, target, true_target) where target is index of the target class.
         """ 
-        img, target, true_target = self.data[index], self.targets[index], self.true_targets[index]
+        if self.data_type == "train":
+            img, target, true_target = self.data[index], self.targets[index], self.true_targets[index]
+        elif self.data_type == "test":
+            img, target = self.data[index], self.targets[index]
 
         # doing this so that it is consistent with all other datasets
         # to return a PIL Image
@@ -99,4 +97,8 @@ class CLCIFAR10(BaseDataset, torchvision.datasets.CIFAR10):
         if self.target_transform is not None:
             target = self.target_transform(target)
 
-        return img, target, true_target
+        if self.data_type == "train":
+            return img, target, true_target
+        else:
+            return img, target
+        

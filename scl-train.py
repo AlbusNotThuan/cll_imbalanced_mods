@@ -33,8 +33,8 @@ def validate(model, dataloader, eval_n_epoch, epoch):
     criterion = nn.CrossEntropyLoss(reduction='none').to(device)
 
     with torch.no_grad():
-        for i, (inputs, labels, true_labels) in enumerate(dataloader):
-            inputs, labels, true_labels = inputs.to(device), labels.to(device), true_labels.to(device)
+        for i, (inputs, true_labels) in enumerate(dataloader):
+            inputs, true_labels = inputs.to(device), true_labels.to(device)
             outputs = model(inputs)
 
             acc1, acc5 = accuracy(outputs, true_labels, topk=(1, 5))
@@ -90,14 +90,14 @@ def train(args):
     lr = args.lr
     seed = args.seed
     data_aug = True if args.data_aug.lower()=="true" else False
+    mixup = True if args.mixup.lower()=="true" else False
+    intra_class = True if args.intra_class.lower()=="true" else False
+    cl_aug = True if args.cl_aug.lower()=="true" else False
+
     eval_n_epoch = args.evaluate_step
     batch_size = args.batch_size
     epochs = args.n_epoch
     n_weight = args.weighting
-    mixup = args.mixup
-    intra_class = args.intra_class
-    cl_aug = args.cl_aug
-
     best_acc1 = 0.
 
     np.random.seed(seed)
@@ -106,9 +106,17 @@ def train(args):
 
     if data_aug:
         print("Use data augmentation.")
+    if intra_class:
+        print("Use complementary mixup intra class")
+    if cl_aug:
+        print("Use mixup noise-free")
 
     if dataset_name == "cifar10":
-        trainset, testset, input_dim, num_classes = prepare_dataset(args.dataset_name, args.max_train_samples, 
+        train_data = "train"
+        trainset, input_dim, num_classes = prepare_dataset(args.dataset_name, train_data, args.max_train_samples, 
+                                                args.multi_label, data_aug, args.imb_type, args.imb_factor)
+        test_data = "test"
+        testset, input_dim, num_classes = prepare_dataset(args.dataset_name, test_data, args.max_train_samples, 
                                                 args.multi_label, data_aug, args.imb_type, args.imb_factor)
     else:
         raise NotImplementedError
@@ -281,10 +289,8 @@ def train(args):
                 # Two kinds of output
                 optimizer.zero_grad()
                 outputs = model(inputs)
-
                 if mixup:
                     # Mixup Data
-                    # _input_mix, target_a, target_b, lam = mixup_data(inputs, labels)
                     if intra_class:
                         _input_mix, target_a, target_b, lam = aug_intra_class(inputs, labels, device)
                     if cl_aug:
@@ -423,7 +429,7 @@ if __name__ == "__main__":
     parser.add_argument('--multi_label', action='store_true')
     parser.add_argument('--imb_type', type=str, default=None)
     parser.add_argument('--imb_factor', type=float, default=1.0)
-    parser.add_argument('--weighting', type=int, default=1)
+    parser.add_argument('--weighting', type=int, default=0)
     parser.add_argument('--mixup', type=str, default='false')
     parser.add_argument('--intra_class', type=str, default='false')
     parser.add_argument('--cl_aug', type=str, default='false')
