@@ -11,7 +11,7 @@ from tqdm import tqdm
 from copy import deepcopy
 import torch.nn.functional as F
 import argparse
-from imb_cll.dataset.dataset import prepare_dataset, CLCustomDataset
+from imb_cll.dataset.dataset import prepare_dataset, prepare_cluster_dataset
 from imb_cll.utils.utils import adjust_learning_rate, AverageMeter, compute_metrics_and_record
 from imb_cll.utils.metrics import accuracy
 from imb_cll.utils.cl_augmentation import mixup_cl_data, mixup_data, aug_intra_class
@@ -93,6 +93,7 @@ def train(args):
     mixup = True if args.mixup.lower()=="true" else False
     intra_class = True if args.intra_class.lower()=="true" else False
     cl_aug = True if args.cl_aug.lower()=="true" else False
+    k_cluster = args.k_cluster
 
     eval_n_epoch = args.evaluate_step
     batch_size = args.batch_size
@@ -113,11 +114,19 @@ def train(args):
 
     if dataset_name == "cifar10":
         train_data = "train"
-        trainset, input_dim, num_classes = prepare_dataset(args.dataset_name, train_data, args.max_train_samples, 
-                                                args.multi_label, data_aug, args.imb_type, args.imb_factor)
+        pretrain = "./CIFAR10_checkpoint_0799_-0.7960.pth.tar"
+        trainset, num_classes = prepare_cluster_dataset(dataset=args.dataset_name, data_type=train_data, kmean_cluster=k_cluster, max_train_samples=None, multi_label=False, 
+                                        augment=data_aug, imb_type="exp", imb_factor=0.01, pretrain=pretrain)
         test_data = "test"
-        testset, input_dim, num_classes = prepare_dataset(args.dataset_name, test_data, args.max_train_samples, 
-                                                args.multi_label, data_aug, args.imb_type, args.imb_factor)
+        testset, num_classes = prepare_cluster_dataset(dataset=args.dataset_name, data_type=test_data, kmean_cluster=k_cluster, max_train_samples=None, multi_label=False, 
+                                       augment=data_aug, imb_type="exp", imb_factor=0.01, pretrain=pretrain)
+        
+        # train_data = "train"
+        # trainset, input_dim, num_classes = prepare_dataset(args.dataset_name, train_data, args.max_train_samples, 
+        #                                         args.multi_label, data_aug, args.imb_type, args.imb_factor)
+        # test_data = "test"
+        # testset, input_dim, num_classes = prepare_dataset(args.dataset_name, test_data, args.max_train_samples, 
+        #                                         args.multi_label, data_aug, args.imb_type, args.imb_factor)
     else:
         raise NotImplementedError
 
@@ -168,7 +177,7 @@ def train(args):
 
                 if mixup:
                     if intra_class:
-                        _input_mix, target_a, target_b, lam = aug_intra_class(inputs, labels, device)
+                        _input_mix, target_a, target_b, lam = aug_intra_class(inputs, labels, true_labels, device)
                     if cl_aug:
                         _input_mix, target_a, target_b, lam = mixup_cl_data(inputs, labels, true_labels, device)
 
@@ -292,7 +301,7 @@ def train(args):
                 if mixup:
                     # Mixup Data
                     if intra_class:
-                        _input_mix, target_a, target_b, lam = aug_intra_class(inputs, labels, device)
+                        _input_mix, target_a, target_b, lam = aug_intra_class(inputs, labels, true_labels, device)
                     if cl_aug:
                         _input_mix, target_a, target_b, lam = mixup_cl_data(inputs, labels, true_labels, device)
 
@@ -424,8 +433,9 @@ if __name__ == "__main__":
     parser.add_argument('--data_aug', type=str, default='false')
     parser.add_argument('--max_train_samples', type=int, default=None)
     parser.add_argument('--evaluate_step', type=int, default=10)
+    parser.add_argument('--k_cluster', type=int, default=10)
     parser.add_argument('--n_epoch', type=int, default=300)
-    parser.add_argument('--batch_size', type=int, default=256)
+    parser.add_argument('--batch_size', type=int, default=512)
     parser.add_argument('--multi_label', action='store_true')
     parser.add_argument('--imb_type', type=str, default=None)
     parser.add_argument('--imb_factor', type=float, default=1.0)

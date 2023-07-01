@@ -37,7 +37,7 @@ def mixup_cl_data(x, y, ytrue, device, alpha=1.0):
                 break
     return mixed_x, y_a, y_b, lam
 
-def aug_intra_class(x, y, device, alpha=1.0):
+def aug_intra_class(x, y, ytrue, device, alpha=1.0):
     '''Returns mixed inputs, pairs of targets, and lambda'''
     if alpha > 0:
         lam = np.random.beta(alpha, alpha)
@@ -51,8 +51,8 @@ def aug_intra_class(x, y, device, alpha=1.0):
         while(True):
             j = random.randint(0, batch_size - 1)
             # import pdb
-            # pdb.set_trace()
-            if y[i] == y[j]:
+            # pdb.set_trace()                                                            
+            if ytrue[i] == ytrue[j]:
                 mixed_x[i] = lam * x[i] + (1 - lam) * x[j]
                 y_a[i], y_b[i] = y[i], y[j]
                 break
