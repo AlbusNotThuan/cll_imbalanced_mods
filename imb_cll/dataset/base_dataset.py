@@ -9,6 +9,7 @@ class BaseDataset:
         # This will NOT shuffle the dataset
         np.random.seed(1126)
         self.true_targets = copy.deepcopy(self.targets)
+        self.k_mean_targets = copy.deepcopy(self.targets)
         self.targets = [
             np.random.choice(
                 [j for j in range(self.num_classes) if j != self.targets[i]],
@@ -44,13 +45,15 @@ class BaseDataset:
             Q[i] += output.mean(dim=0)
         # print(Q)
         return Q
-    
 
     # Base dataset for creating imbalanced dataset
     def get_img_num_per_cls(self, cls_num, imb_type, imb_factor):
-        # cifar10, cifar100, svhn
+        # cifar10, cifar100, svhn, mnist
         if hasattr(self, "data"):
             img_max = len(self.data) / cls_num
+            # check for mnist, just take 5900 samples for maximum
+            if self.dataset == "MNIST":
+                img_max = img_max - 100
         # cinic10, tiny-imagenet
         elif hasattr(self, "samples"):
             img_max = len(self.samples) / cls_num
@@ -68,6 +71,7 @@ class BaseDataset:
                 img_num_per_cls.append(int(img_max * imb_factor))
         else:
             img_num_per_cls.extend([int(img_max)] * cls_num)
+        print("The number samples of each class: {}".format(img_num_per_cls))
         return img_num_per_cls
 
     def gen_imbalanced_data(self, img_num_per_cls):
@@ -87,6 +91,7 @@ class BaseDataset:
                 the_class,
             ] * the_img_num)
         new_data = np.vstack(new_data)
+        print(new_data.shape[0], len(new_targets))
         assert new_data.shape[0] == len(new_targets)
         self.data = new_data
         self.targets = new_targets

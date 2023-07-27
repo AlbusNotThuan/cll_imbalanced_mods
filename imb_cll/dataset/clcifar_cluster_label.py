@@ -11,10 +11,115 @@ from torchvision.datasets.vision import VisionDataset
 from torchvision.datasets.utils import check_integrity, download_and_extract_archive
 from torchvision.models import resnet18
 from torchvision.transforms import Compose, ToTensor, Normalize, RandomCrop, RandomHorizontalFlip
-import copy
 from .base_dataset import BaseDataset
 from sklearn.cluster import KMeans
-from torch.utils.data import DataLoader
+
+def _cifar100_to_cifar20(target):
+    # obtained from cifar_test script
+    _dict = {
+        0: 4,
+        1: 1,
+        2: 14,
+        3: 8,
+        4: 0,
+        5: 6,
+        6: 7,
+        7: 7,
+        8: 18,
+        9: 3,
+        10: 3,
+        11: 14,
+        12: 9,
+        13: 18,
+        14: 7,
+        15: 11,
+        16: 3,
+        17: 9,
+        18: 7,
+        19: 11,
+        20: 6,
+        21: 11,
+        22: 5,
+        23: 10,
+        24: 7,
+        25: 6,
+        26: 13,
+        27: 15,
+        28: 3,
+        29: 15,
+        30: 0,
+        31: 11,
+        32: 1,
+        33: 10,
+        34: 12,
+        35: 14,
+        36: 16,
+        37: 9,
+        38: 11,
+        39: 5,
+        40: 5,
+        41: 19,
+        42: 8,
+        43: 8,
+        44: 15,
+        45: 13,
+        46: 14,
+        47: 17,
+        48: 18,
+        49: 10,
+        50: 16,
+        51: 4,
+        52: 17,
+        53: 4,
+        54: 2,
+        55: 0,
+        56: 17,
+        57: 4,
+        58: 18,
+        59: 17,
+        60: 10,
+        61: 3,
+        62: 2,
+        63: 12,
+        64: 12,
+        65: 16,
+        66: 12,
+        67: 1,
+        68: 9,
+        69: 19,
+        70: 2,
+        71: 10,
+        72: 0,
+        73: 1,
+        74: 16,
+        75: 12,
+        76: 9,
+        77: 13,
+        78: 15,
+        79: 13,
+        80: 16,
+        81: 19,
+        82: 2,
+        83: 4,
+        84: 6,
+        85: 19,
+        86: 5,
+        87: 5,
+        88: 8,
+        89: 19,
+        90: 18,
+        91: 1,
+        92: 2,
+        93: 15,
+        94: 6,
+        95: 0,
+        96: 17,
+        97: 8,
+        98: 14,
+        99: 13,
+    }
+
+    return _dict[target]
 
 class CLCIFAR10(VisionDataset, BaseDataset):
     """`CIFAR10 <https://www.cs.toronto.edu/~kriz/cifar.html>`_ Dataset.
@@ -69,12 +174,14 @@ class CLCIFAR10(VisionDataset, BaseDataset):
         imb_type=None,
         imb_factor=1.0,
         pretrain=None,
-        seed=1126
+        seed=1126,
+        dataset="cifar10",
     ):
         self.data_type = data_type
         self.num_classes = 10
         self.input_dim = 3 * 32 * 32
         self.multi_label = multi_label
+        self.dataset = dataset
         self.imb_type = imb_type
         self.imb_factor = imb_factor
         self.kmean_cluster = kmean_cluster # Number of clustering with K mean method.
@@ -136,9 +243,6 @@ class CLCIFAR10(VisionDataset, BaseDataset):
         
         # self.rng = np.random.default_rng(self.seed)
         # self.idx = self.rng.permutation(len(self.data))
-        # self.idx = self.rng.permutation(len(self.data))
-        # self.idx_train = self.idx[range(0, 12406)]
-        # self.idx_train = self.idx[:12406]
 
         self.idx_train = len(self.data)
         # print("The range of index {}".format(self.idx_train[:10]))
@@ -167,8 +271,9 @@ class CLCIFAR10(VisionDataset, BaseDataset):
 
         self._load_meta()
         if self.data_type =="train":
-            self.true_targets = self.features_space()
-            print("Done: K_Mean Cluster")
+            if self.kmean_cluster != 0:
+                self.k_mean_targets = self.features_space()
+                print("Done: K_Mean Cluster")
 
     def _load_meta(self):
         path = os.path.join(self.root, self.base_folder, self.meta['filename'])
@@ -189,8 +294,8 @@ class CLCIFAR10(VisionDataset, BaseDataset):
             tuple: (image, target) where target is index of the target class.
         """
         if self.data_type == "train":
-            img, target, true_target = self.data[index], self.targets[index], self.true_targets[index]
-        
+            img, target, true_target, k_mean_target = self.data[index], self.targets[index], self.true_targets[index], self.k_mean_targets[index]
+
         if self.data_type == "test":
             img, target = self.data[index], self.targets[index]
 
@@ -205,7 +310,7 @@ class CLCIFAR10(VisionDataset, BaseDataset):
             target = self.target_transform(target)
 
         if self.data_type == "train":
-            return img, target, true_target
+            return img, target, true_target, k_mean_target
         else:
             return img, target
     
@@ -236,9 +341,12 @@ class CLCIFAR10(VisionDataset, BaseDataset):
     @torch.no_grad()
     def features_space(self):
         if self.data_type == "train":
-            # pretrain = "../CIFAR10_checkpoint_0799_-0.7960.pth.tar"
             model_simsiam = resnet18()
-            model_simsiam.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
+            if self.dataset in ('MNIST', 'FashionMNIST'):
+                num_channel = 1
+            else:
+                num_channel = 3
+            model_simsiam.conv1 = nn.Conv2d(num_channel, 64, kernel_size=3, stride=1, padding=1, bias=False)
             model_simsiam.maxpool = nn.Identity()
 
             transform=Compose([
@@ -281,3 +389,163 @@ class CLCIFAR10(VisionDataset, BaseDataset):
         print("The number of each sample into each cluster is {}".format(sorted_list))
 
         return cluster_labels
+    
+
+class CLCIFAR100(CLCIFAR10):
+    """`CIFAR100 <https://www.cs.toronto.edu/~kriz/cifar.html>`_ Dataset.
+    This is a subclass of the `CIFAR10` Dataset.
+    """
+
+    base_folder = "cifar-100-python"
+    url = "https://www.cs.toronto.edu/~kriz/cifar-100-python.tar.gz"
+    filename = "cifar-100-python.tar.gz"
+    tgz_md5 = "eb9058c3a382ffc7106e4002c42a8d85"
+    train_list = [
+        ["train", "16019d7e3df5f24257cddd939b257f8d"],
+    ]
+
+    test_list = [
+        ["test", "f0ef6b0ae62326f3e7ffdfab6717acfc"],
+    ]
+    meta = {
+        "filename": "meta",
+        "key": "fine_label_names",
+        "md5": "7973b15100ade9c7d40fb424638fde48",
+    }
+
+
+class CLCIFAR20(CLCIFAR100):
+    """`CIFAR100 <https://www.cs.toronto.edu/~kriz/cifar.html>`_ Dataset.
+    This is a subclass of the `CIFAR10` Dataset.
+    """
+
+    base_folder = "cifar-100-python"
+    url = "https://www.cs.toronto.edu/~kriz/cifar-100-python.tar.gz"
+    filename = "cifar-100-python.tar.gz"
+    tgz_md5 = "eb9058c3a382ffc7106e4002c42a8d85"
+    train_list = [
+        ["train", "16019d7e3df5f24257cddd939b257f8d"],
+    ]
+
+    test_list = [
+        ["test", "f0ef6b0ae62326f3e7ffdfab6717acfc"],
+    ]
+    meta = {
+        "filename": "meta",
+        "key": "fine_label_names",
+        "md5": "7973b15100ade9c7d40fb424638fde48",
+    }
+
+    def __init__(self,
+        root="../data/cifar100",
+        train=True,
+        data_type=None,
+        transform=None,
+        validate=False,
+        target_transform=None,
+        download=True,
+        kmean_cluster=None,
+        max_train_samples=None,
+        multi_label=False,
+        augment=False,
+        imb_type=None,
+        imb_factor=1.0,
+        pretrain=None,
+        seed=1126,
+        dataset="cifar20",
+    ):
+        self.data_type = data_type
+        self.num_classes = 20
+        self.input_dim = 3 * 32 * 32
+        self.multi_label = multi_label
+        self.dataset = dataset
+        self.imb_type = imb_type
+        self.imb_factor = imb_factor
+        self.kmean_cluster = kmean_cluster # Number of clustering with K mean method.
+
+        self.train = train
+        self.validate = validate
+        self.pretrain = pretrain
+        self.seed = seed
+        self.root = root
+        self.transform = transform
+        self.target_transform = target_transform
+
+        if seed is None:
+            raise RuntimeError('Seed is not specified.')
+
+        if self.data_type == "train" and imb_factor > 0 and not imb_type in ["exp", "step"]:
+            raise RuntimeError(f'Imb_type method {imb_type} is invalid.')
+        
+        if download:
+            self.download()
+
+        if not self._check_integrity():
+            raise RuntimeError('Dataset not found or corrupted.' +
+                               ' You can use download=True to download it')
+
+        if self.data_type in ("train", "val"):
+            downloaded_list = self.train_list
+        else:
+            downloaded_list = self.test_list
+
+        self.data = []
+        self.targets = []
+
+        # now load the picked numpy arrays
+        for file_name, checksum in downloaded_list:
+            file_path = os.path.join(self.root, self.base_folder, file_name)
+            with open(file_path, 'rb') as f:
+                entry = pickle.load(f, encoding='latin1')
+                self.data.append(entry['data'])
+                if 'labels' in entry:
+                    self.targets.extend(entry['labels'])
+                else:
+                    self.targets.extend(entry['fine_labels'])
+        
+        self.targets = [_cifar100_to_cifar20(l) for l in self.targets]
+
+        self.data = np.vstack(self.data).reshape(-1, 3, 32, 32)
+        self.data = self.data.transpose((0, 2, 3, 1))  # convert to HWC
+
+        if self.data_type =="train":
+            if self.imb_type is not None:
+                self.img_num_list = self.get_img_num_per_cls(self.num_classes, self.imb_type, self.imb_factor)
+                self.gen_imbalanced_data(self.img_num_list)
+            
+            if max_train_samples: #limit the size of the training dataset to max_train_samples
+                train_len = min(len(self.data), max_train_samples)
+                self.data = self.data[:train_len]
+                self.targets = self.targets[:train_len]
+
+            self.gen_complementary_target()
+        
+        self.idx_train = len(self.data)
+
+        self.mean, self.std = [0.5071, 0.4865, 0.4409], [0.2673, 0.2564, 0.2762]
+
+        if self.data_type == "train" and not validate:
+            if augment:
+                self.transform=Compose([
+                    RandomHorizontalFlip(),
+                    RandomCrop(32, 4, padding_mode='reflect'),
+                    ToTensor(),
+                    Normalize(mean=self.mean, std=self.std),
+                ])
+            else:
+                self.transform=Compose([
+                ToTensor(),
+                Normalize(mean=self.mean, std=self.std),
+            ])
+
+        else:
+            self.transform=Compose([
+                ToTensor(),
+                Normalize(mean=self.mean, std=self.std),
+            ])
+
+        self._load_meta()
+        if self.data_type =="train":
+            if self.kmean_cluster != 0:
+                self.k_mean_targets = self.features_space()
+                print("Done: K_Mean Cluster")
