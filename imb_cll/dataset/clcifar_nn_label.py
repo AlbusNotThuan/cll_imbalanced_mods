@@ -10,19 +10,119 @@ import torch.nn.functional as F
 from torchvision.datasets.vision import VisionDataset
 from torchvision.datasets.utils import check_integrity, download_and_extract_archive
 from torchvision.models import resnet18
-from torchvision.transforms import Compose, ToTensor, Normalize, Pad, RandomCrop, RandomHorizontalFlip, RandomErasing, ToPILImage, TrivialAugmentWide
-import copy
-# from sklearnex.neighbors import NearestNeighbors
+from torchvision.transforms import Compose, ToTensor, Normalize, RandomCrop, RandomHorizontalFlip
+from .base_dataset import BaseDataset
 
-from utils import _cifar100_to_cifar20
 from tqdm.auto import tqdm
 
-def get_kNN(X, k):
-    neigh = NearestNeighbors(n_neighbors=k).fit(X)
-    Dist, Idx = neigh.kneighbors(X)
-    return Dist, Idx, neigh
+def _cifar100_to_cifar20(target):
+    # obtained from cifar_test script
+    _dict = {
+        0: 4,
+        1: 1,
+        2: 14,
+        3: 8,
+        4: 0,
+        5: 6,
+        6: 7,
+        7: 7,
+        8: 18,
+        9: 3,
+        10: 3,
+        11: 14,
+        12: 9,
+        13: 18,
+        14: 7,
+        15: 11,
+        16: 3,
+        17: 9,
+        18: 7,
+        19: 11,
+        20: 6,
+        21: 11,
+        22: 5,
+        23: 10,
+        24: 7,
+        25: 6,
+        26: 13,
+        27: 15,
+        28: 3,
+        29: 15,
+        30: 0,
+        31: 11,
+        32: 1,
+        33: 10,
+        34: 12,
+        35: 14,
+        36: 16,
+        37: 9,
+        38: 11,
+        39: 5,
+        40: 5,
+        41: 19,
+        42: 8,
+        43: 8,
+        44: 15,
+        45: 13,
+        46: 14,
+        47: 17,
+        48: 18,
+        49: 10,
+        50: 16,
+        51: 4,
+        52: 17,
+        53: 4,
+        54: 2,
+        55: 0,
+        56: 17,
+        57: 4,
+        58: 18,
+        59: 17,
+        60: 10,
+        61: 3,
+        62: 2,
+        63: 12,
+        64: 12,
+        65: 16,
+        66: 12,
+        67: 1,
+        68: 9,
+        69: 19,
+        70: 2,
+        71: 10,
+        72: 0,
+        73: 1,
+        74: 16,
+        75: 12,
+        76: 9,
+        77: 13,
+        78: 15,
+        79: 13,
+        80: 16,
+        81: 19,
+        82: 2,
+        83: 4,
+        84: 6,
+        85: 19,
+        86: 5,
+        87: 5,
+        88: 8,
+        89: 19,
+        90: 18,
+        91: 1,
+        92: 2,
+        93: 15,
+        94: 6,
+        95: 0,
+        96: 17,
+        97: 8,
+        98: 14,
+        99: 13,
+    }
 
-class CLCIFAR10(VisionDataset):
+    return _dict[target]
+
+class NCLCIFAR10(VisionDataset, BaseDataset):
     """`CIFAR10 <https://www.cs.toronto.edu/~kriz/cifar.html>`_ Dataset.
 
     Args:
@@ -61,48 +161,62 @@ class CLCIFAR10(VisionDataset):
     }
 
     def __init__(self,
-            root="./data",
-            train=None,
-            validate=False,
-            transform=None,
-            target_transform=None,
-            download=False,
-            num_comp=1,
-            num_neighbors=64,
-            pretrain=None,
-            noise=0,
-            num_iter=100,
-            weight=None,
-            seed=None):
+        root=None,
+        train=True,
+        data_type=None,
+        transform=None,
+        validate=False,
+        target_transform=None,
+        download=True,
+        max_train_samples=None,
+        multi_label=False,
+        imb_type=None,
+        imb_factor=1.0,
+        num_comp=1,
+        num_neighbors=64,
+        pretrain=None,
+        seed=1126,
+        noise=0,
+        num_iter=100,
+        weight=None,
+        dataset=None,
+    ):
+        self.root = root
+        self.data_type = data_type
+        self.num_classes = 10
+        self.input_dim = 3 * 32 * 32
+        self.multi_label = multi_label
+        self.dataset = dataset
+        self.imb_type = imb_type
+        self.imb_factor = imb_factor
 
-        super(CLCIFAR10, self).__init__(root, transform=transform,
-                                      target_transform=target_transform)
-
-        self.train = train  # training, val, or test
+        super(NCLCIFAR10, self).__init__(
+            root, train, transform, target_transform)
+        
         self.validate = validate
         self.pretrain = pretrain
-        self.noise = noise
         self.seed = seed
+        self.noise = noise
         self.num_iter = num_iter
         self.weight = weight
 
         if seed is None:
             raise RuntimeError('Seed is not specified.')
 
-        if not train in ["train", "val", "test"]:
-            raise RuntimeError(f'Training split {train} is invalid.')
-
-        if train =="train" and num_neighbors > 0 and not weight in ["rank", "distance"]:
+        if self.data_type == "train" and imb_factor > 0 and not imb_type in ["exp", "step"]:
+            raise RuntimeError(f'Imb_type method {imb_type} is invalid.')
+        
+        if self.data_type =="train" and num_neighbors > 0 and not weight in ["rank", "distance"]:
             raise RuntimeError(f'Weighting method {weight} is invalid.')
-
+        
         if download:
             self.download()
 
         if not self._check_integrity():
             raise RuntimeError('Dataset not found or corrupted.' +
                                ' You can use download=True to download it')
-
-        if self.train in ("train", "val"):
+        
+        if self.data_type in ("train", "val"):
             downloaded_list = self.train_list
         else:
             downloaded_list = self.test_list
@@ -124,21 +238,32 @@ class CLCIFAR10(VisionDataset):
         self.data = np.vstack(self.data).reshape(-1, 3, 32, 32)
         self.data = self.data.transpose((0, 2, 3, 1))  # convert to HWC
 
+        if self.data_type =="train":
+            if self.imb_type is not None:
+                self.img_num_list, self.img_max = self.get_img_num_per_cls(self.num_classes, self.imb_type, self.imb_factor)
+                self.gen_imbalanced_data(self.img_num_list)
+            
+            if max_train_samples: #limit the size of the training dataset to max_train_samples
+                train_len = min(len(self.data), max_train_samples)
+                self.data = self.data[:train_len]
+                self.targets = self.targets[:train_len]
+
+            # self.gen_complementary_target()
+        
         self.rng = np.random.default_rng(self.seed)
         self.idx = self.rng.permutation(len(self.targets))
-        self.idx_train = self.idx[:45000]
-        self.idx_val = self.idx[45000:]
+        self.idx_train = self.idx[:len(self.data)]
 
         self.num_comp = num_comp
         self.num_neighbors = num_neighbors
         self.mean, self.std = [0.4914, 0.4822, 0.4465], [0.247,  0.2435, 0.2616]
-        
-        if self.train in ("train", "val"):
+
+        if self.data_type in ("train", "val"):
             self.comp_labels = self.generate_multi_compl_labels()
 
-        if self.train == "train" and not validate:
+        if self.data_type == "train" and not validate:
             ol = []
-            for i in range(45000):
+            for i in range(len(self.data)):
                 ol.append(self.targets[self.idx_train[i]])
             ol = torch.LongTensor(ol)
             K = 10
@@ -160,7 +285,8 @@ class CLCIFAR10(VisionDataset):
             print(f"{least_cl:.4f}")
             # print(f"{least_cl:.4f} {margin_avg:.4f} {orig_cl:.4f} {noise_cl:.4f} {res_cl:.4f}")
 
-        if self.train == "train" and not validate:
+        
+        if self.data_type == "train" and not validate:
             self.transform=Compose([
                 RandomHorizontalFlip(),
                 RandomCrop(32, 4, padding_mode='reflect'),
@@ -174,9 +300,9 @@ class CLCIFAR10(VisionDataset):
             ])
 
         self._load_meta()
-        if self.train =="train":
+        if self.data_type =="train":
             self.cl_labels = self.comp_labels
-
+    
     def _load_meta(self):
         path = os.path.join(self.root, self.base_folder, self.meta['filename'])
         if not check_integrity(path, self.meta['md5']):
@@ -195,10 +321,8 @@ class CLCIFAR10(VisionDataset):
         Returns:
             tuple: (image, target) where target is index of the target class.
         """
-        if self.train == "train":
+        if self.data_type == "train":
             img, target = self.data[self.idx_train[index]], self.targets[self.idx_train[index]]
-        elif self.train == "val":
-            img, target = self.data[self.idx_val[index]], self.targets[self.idx_val[index]]
         else:
             img, target = self.data[index], self.targets[index]
 
@@ -212,21 +336,17 @@ class CLCIFAR10(VisionDataset):
         if self.target_transform is not None:
             target = self.target_transform(target)
 
-        if self.train == "train":
-            return img_ori, target, self.comp_labels[index]
-        elif self.train == "val":
+        if self.data_type == "train":
             return img_ori, target, self.comp_labels[index]
         else:
             return img_ori, target
 
     def __len__(self):
-        if self.train == "train":
+        if self.data_type == "train":
             return len(self.idx_train)
-        elif self.train == "val":
-            return len(self.idx_val)
         else:
             return len(self.data)
-
+        
     def _check_integrity(self):
         root = self.root
         for fentry in (self.train_list + self.test_list):
@@ -243,20 +363,21 @@ class CLCIFAR10(VisionDataset):
         download_and_extract_archive(self.url, self.root, filename=self.filename, md5=self.tgz_md5)
 
     def extra_repr(self):
-        return "Split: {}".format("Train" if self.train is True else "Test")
+        return "Split: {}".format("Train" if self.data_type is True else "Test")
 
     @torch.no_grad()
     def generate_multi_compl_labels(self):
-        if self.train == "train" and not self.validate:
+        if self.data_type == "train" and not self.validate:
             model_simsiam = resnet18()
             model_simsiam.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
-            model_simsiam.maxpool = nn.Identity()
+            # model_simsiam.maxpool = nn.Identity()
 
             transform=Compose([
                 ToTensor(),
                 Normalize(mean=self.mean, std=self.std),
             ])
 
+            # tensor = torch.stack([transform(self.data[i]) for i in range(0, len(self.idx_train))])
             tensor = torch.stack([transform(self.data[i]) for i in self.idx_train])
             ds = torch.utils.data.TensorDataset(tensor)
             dl = torch.utils.data.DataLoader(ds, batch_size=1024, shuffle=False)
@@ -295,15 +416,11 @@ class CLCIFAR10(VisionDataset):
         g_cpu.manual_seed(self.seed)
         comp = torch.multinomial(y_oh.matmul(torch.Tensor(T)), self.num_comp, generator=g_cpu)
 
-        if self.train == "train":
+        if self.data_type == "train":
             comp = comp[self.idx_train]
             if self.validate:
                 comp = F.one_hot(comp.squeeze(),K).float()
                 return comp
-        elif self.train =="val":
-            comp = comp[self.idx_val].squeeze()
-            comp = F.one_hot(comp,K).float()
-            return comp
 
         self.comp = comp.squeeze()
         comp_oh = F.one_hot(comp,K).float().sum(dim=1)
@@ -338,8 +455,8 @@ class CLCIFAR10(VisionDataset):
         smooth_comp = smooth_comp / smooth_comp.sum(dim=1, keepdim=True)
  
         return smooth_comp
-
-class CLCIFAR100(CLCIFAR10):
+    
+class NCLCIFAR100(NCLCIFAR10):
     """`CIFAR100 <https://www.cs.toronto.edu/~kriz/cifar.html>`_ Dataset.
     This is a subclass of the `CIFAR10` Dataset.
     """
@@ -361,7 +478,7 @@ class CLCIFAR100(CLCIFAR10):
         "md5": "7973b15100ade9c7d40fb424638fde48",
     }
 
-class CLCIFAR20(CLCIFAR10):
+class NCLCIFAR20(NCLCIFAR10):
     """`CIFAR100 <https://www.cs.toronto.edu/~kriz/cifar.html>`_ Dataset.
     This is a subclass of the `CIFAR10` Dataset.
     """
@@ -384,39 +501,52 @@ class CLCIFAR20(CLCIFAR10):
     }
 
     def __init__(self,
-            root="./data",
-            train="train",
-            validate=False,
-            transform=None,
-            target_transform=None,
-            download=False,
-            num_comp=1,
-            num_neighbors=64,
-            pretrain=None,
-            noise=0,
-            num_iter=100,
-            weight=None,
-            seed=None):
+        root=None,
+        train=True,
+        data_type=None,
+        transform=None,
+        validate=False,
+        target_transform=None,
+        download=True,
+        max_train_samples=None,
+        multi_label=False,
+        imb_type=None,
+        imb_factor=1.0,
+        num_comp=1,
+        num_neighbors=64,
+        pretrain=None,
+        seed=1126,
+        noise=0,
+        num_iter=100,
+        weight=None,
+        dataset=None,):
+
         self.root = root
+        self.data_type = data_type
+        self.num_classes = 20
+        self.input_dim = 3 * 32 * 32
+        self.multi_label = multi_label
         self.transform = transform
         self.target_transform = target_transform
-        self.train = train  # training, val, or test
+        self.dataset = dataset
+        self.imb_type = imb_type
+        self.imb_factor = imb_factor
         self.validate = validate
         self.pretrain = pretrain
-        self.noise = noise
         self.seed = seed
+        self.noise = noise
         self.num_iter = num_iter
         self.weight = weight
 
         if seed is None:
             raise RuntimeError('Seed is not specified.')
 
-        if not train in ["train", "val", "test"]:
-            raise RuntimeError(f'Training split {train} is invalid.')
-
+        if self.data_type == "train" and imb_factor > 0 and not imb_type in ["exp", "step"]:
+            raise RuntimeError(f'Imb_type method {imb_type} is invalid.')
+        
         if train =="train" and num_neighbors > 0 and not weight in ["rank", "distance"]:
             raise RuntimeError(f'Weighting method {weight} is invalid.')
-
+        
         if download:
             self.download()
 
@@ -424,7 +554,7 @@ class CLCIFAR20(CLCIFAR10):
             raise RuntimeError('Dataset not found or corrupted.' +
                                ' You can use download=True to download it')
 
-        if self.train in ("train", "val"):
+        if self.data_type in ("train", "val"):
             downloaded_list = self.train_list
         else:
             downloaded_list = self.test_list
@@ -448,25 +578,39 @@ class CLCIFAR20(CLCIFAR10):
         self.data = np.vstack(self.data).reshape(-1, 3, 32, 32)
         self.data = self.data.transpose((0, 2, 3, 1))  # convert to HWC
 
+        if self.data_type =="train":
+            if self.imb_type is not None:
+                self.img_num_list, self.img_max = self.get_img_num_per_cls(self.num_classes, self.imb_type, self.imb_factor)
+                self.gen_imbalanced_data(self.img_num_list)
+            
+            if max_train_samples: #limit the size of the training dataset to max_train_samples
+                train_len = min(len(self.data), max_train_samples)
+                self.data = self.data[:train_len]
+                self.targets = self.targets[:train_len]
+
+        # self.rng = np.random.default_rng(self.seed)
+        # self.idx = self.rng.permutation(len(self.targets))
+        # self.idx_train = self.idx[:45000]
+        # self.idx_val = self.idx[45000:]
+    
         self.rng = np.random.default_rng(self.seed)
         self.idx = self.rng.permutation(len(self.targets))
-        self.idx_train = self.idx[:45000]
-        self.idx_val = self.idx[45000:]
+        self.idx_train = self.idx[:len(self.data)]
 
         self.num_comp = num_comp
         self.num_neighbors = num_neighbors
         self.mean, self.std = [0.5071, 0.4865, 0.4409], [0.2673, 0.2564, 0.2762]
         
-        if self.train in ("train", "val"):
+        if self.data_type in ("train", "val"):
             self.comp_labels = self.generate_multi_compl_labels()
 
-        if self.train == "train" and not validate:
+        if self.data_type == "train" and not validate:
             K = 20
             T = (torch.ones(K,K) - torch.eye(K)) / (K-1)
 
             g_cpu = torch.Generator()
             g_cpu.manual_seed(self.seed)
-            for i in range(45000):
+            for i in range(len(self.data)):
                 ol = self.targets[self.idx_train[i]]
                 noise_cl = self.comp_labels[i,ol].item()
 
@@ -494,7 +638,7 @@ class CLCIFAR20(CLCIFAR10):
                 # self.comp_labels[i,ol] = noise_cl
 
             ol = []
-            for i in range(45000):
+            for i in range(len(self.data)):
                 ol.append(self.targets[self.idx_train[i]])
             ol = torch.LongTensor(ol)
 
@@ -514,7 +658,7 @@ class CLCIFAR20(CLCIFAR10):
             # print(f"{least_cl:.4f} {ent:.4f} {orig_cl:.4f} {noise_cl:.4f} {res_cl:.4f} {l1:.4f}")
             print(f"{least_cl:.4f}")
 
-        if self.train == "train" and not validate:
+        if self.data_type == "train" and not validate:
             self.transform=Compose([
                 RandomHorizontalFlip(),
                 RandomCrop(32, 4, padding_mode='reflect'),
@@ -528,5 +672,5 @@ class CLCIFAR20(CLCIFAR10):
             ])
 
         self._load_meta()
-        if self.train =="train":
+        if self.data_type =="train":
             self.cl_labels = self.comp_labels

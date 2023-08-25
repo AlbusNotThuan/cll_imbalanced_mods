@@ -72,7 +72,7 @@ class BaseDataset:
         else:
             img_num_per_cls.extend([int(img_max)] * cls_num)
         print("The number samples of each class: {}".format(img_num_per_cls))
-        return img_num_per_cls
+        return img_num_per_cls, img_max
 
     def gen_imbalanced_data(self, img_num_per_cls):
         new_data = []

@@ -1,31 +1,102 @@
 import torch.optim as optim
+import torch
 import numpy as np
 from sklearn.metrics import confusion_matrix
 from imb_cll.utils.metrics import shot_acc
+
+def num_img_per_class(img_max, cls_num, imb_type, imb_factor):
+    cls_num_list = []
+    if imb_type == 'exp':
+        for cls_idx in range(cls_num):
+            num = img_max * (imb_factor**(cls_idx / (cls_num - 1.0)))
+            cls_num_list.append(int(num))
+    elif imb_type == 'step':
+        for cls_idx in range(cls_num // 2):
+            cls_num_list.append(int(img_max))
+        for cls_idx in range(cls_num // 2):
+            cls_num_list.append(int(img_max * imb_factor))
+    else:
+        cls_num_list.extend([int(img_max)] * cls_num)
+    print("The number samples of each class: {}".format(cls_num_list))
+    return cls_num_list
+
+def weighting_calculation(dataset_name, imb_factor, n_weight):
+    if dataset_name == "CIFAR10":
+        if imb_factor == 0.01:
+            pretrain = "./imb_cll_pretrained/CIFAR10/CIFAR10_checkpoint_0799_-0.7960.pth.tar"
+            weights = torch.tensor([1.44308171, 1.14900082, 1.02512971, 0.96447884, 0.93054867, 0.91227983, 0.90093544, 0.89476267, 0.89110236, 0.88867995])
+            # weights = torch.tensor([0.05061136, 0.07689979, 0.12113387, 0.19503667, 0.31880537, 0.52458985, 0.86834894, 1.44262727, 2.40922305, 3.99272382])
+            weights = weights ** n_weight
+        elif imb_factor == 1:
+            pretrain = "./balanced_cll_pretrained/CIFAR10/CIFAR10_checkpoint_0799_-0.8583.pth.tar"
+            weights = torch.tensor([1.44308171, 1.14900082, 1.02512971, 0.96447884, 0.93054867, 0.91227983, 0.90093544, 0.89476267, 0.89110236, 0.88867995])
+            weights = weights ** n_weight
+    elif dataset_name == "CIFAR20":
+        if imb_factor == 0.01:
+            pretrain = "./imb_cll_pretrained/CIFAR20/CIFAR20_checkpoint_0799_-0.7825.pth.tar"
+            weights = torch.tensor([1.20217289, 1.13594089, 1.08908254, 1.0550147,  1.02975162, 1.01078401, 0.99631446, 0.98537103, 0.97687792, 0.97037571, 0.96528757, 0.96132228, 0.95828854, 0.95592451, 0.95397714, 0.95252198, 0.95139334, 0.95050849, 0.94978578, 0.94930461])
+            weights = weights ** n_weight
+        elif imb_factor == 1:
+            pretrain = "./balanced_cll_pretrained/CIFAR20/CIFAR20_checkpoint_0799_-0.8386.pth.tar"
+            weights = torch.tensor([1.20217289, 1.13594089, 1.08908254, 1.0550147,  1.02975162, 1.01078401, 0.99631446, 0.98537103, 0.97687792, 0.97037571, 0.96528757, 0.96132228, 0.95828854, 0.95592451, 0.95397714, 0.95252198, 0.95139334, 0.95050849, 0.94978578, 0.94930461])
+            weights = weights ** n_weight
+    elif dataset_name == "FashionMNIST":
+        if imb_factor == 0.01:
+            pretrain = "./imb_cll_pretrained/FashionMNIST/FashionMNIST_checkpoint_0799_-0.9020.pth.tar"
+            weights = torch.tensor([1.37520534, 1.1097013,  1.04209213, 0.96593773, 0.9537242, 0.92060064, 0.91322734, 0.90291396, 0.90958861, 0.90700876])
+            weights = weights ** n_weight
+        elif imb_factor == 1:
+            pretrain = "./balanced_cll_pretrained/FashionMNIST/FashionMNIST_checkpoint_0799_-0.9422.pth.tar"
+            weights = torch.tensor([1.37520534, 1.1097013,  1.04209213, 0.96593773, 0.9537242, 0.92060064, 0.91322734, 0.90291396, 0.90958861, 0.90700876])
+            weights = weights ** n_weight
+    elif dataset_name == "MNIST":
+        if imb_factor == 0.01:
+            pretrain = "./imb_cll_pretrained/MNIST/MNIST_checkpoint_0799_-0.8831.pth.tar"
+            weights = torch.tensor([1.3762853, 1.11227572, 1.04531862, 0.96738018, 0.9514026, 0.91518053, 0.91251744, 0.90881726, 0.90619416, 0.90462819])
+            weights = weights ** n_weight
+        elif imb_factor == 1:
+            pretrain = "./balanced_cll_pretrained/MNIST/MNIST_checkpoint_0799_-0.8980.pth.tar"
+            weights = torch.tensor([1.3762853, 1.11227572, 1.04531862, 0.96738018, 0.9514026, 0.91518053, 0.91251744, 0.90881726, 0.90619416, 0.90462819])
+            weights = weights ** n_weight
+    elif dataset_name == "KMNIST":
+        if imb_factor == 0.01:
+            pretrain = "./imb_cll_pretrained/KMNIST/KMNIST_checkpoint_0799_-0.8738.pth.tar"
+            weights = torch.tensor([1.37520534, 1.1097013,  1.04209213, 0.96593773, 0.9537242, 0.92060064, 0.91322734, 0.90291396, 0.90958861, 0.90700876])
+            weights = weights ** n_weight
+        elif imb_factor == 1:
+            pretrain = "./balanced_cll_pretrained/KMNIST/KMNIST_checkpoint_0799_-0.9231.pth.tar"
+            weights = torch.tensor([1.37520534, 1.1097013,  1.04209213, 0.96593773, 0.9537242, 0.92060064, 0.91322734, 0.90291396, 0.90958861, 0.90700876])
+            weights = weights ** n_weight
+    else:
+        raise NotImplementedError
+
+    return weights, pretrain
 
 def adjust_learning_rate(epochs, epoch, learning_rate):
     """Sets the learning rate"""
     # total 200 epochs scheme
     if epochs == 200:
         epoch = epoch + 1
-        if epoch <= 5:
-            learning_rate = learning_rate * epoch / 5
-        elif epoch >= 180:
-            learning_rate = learning_rate * 0.0001
-            # learning_rate = self.cfg.learning_rate * 1
-        elif epoch >= 160:
+        if epoch >= 180:
             learning_rate = learning_rate * 0.01
-            # learning_rate = self.cfg.learning_rate * 1
+        elif epoch >= 160:
+            learning_rate = learning_rate * 0.1
         else:
             learning_rate = learning_rate
     # total 300 epochs scheme
     elif epochs == 300:
         epoch = epoch + 1
-        if epoch <= 5:
-            learning_rate = learning_rate * epoch / 5
-        elif epoch > 250:
+        if epoch > 280:
             learning_rate = learning_rate * 0.01
-        elif epoch > 150:
+        elif epoch > 240:
+            learning_rate = learning_rate * 0.1
+        else:
+            learning_rate = learning_rate
+    elif epochs == 400:
+        epoch = epoch + 1
+        if epoch > 350:
+            learning_rate = learning_rate * 0.01
+        elif epoch > 300:
             learning_rate = learning_rate * 0.1
         else:
             learning_rate = learning_rate
