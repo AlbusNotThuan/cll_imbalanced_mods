@@ -88,7 +88,7 @@ class CLMNIST(VisionDataset, BaseDataset):
 
     def __init__(
         self,
-        root="../data/mnist",
+        root=None,
         train=True,
         data_type=None,
         # transform=transforms.ToTensor(),
@@ -104,8 +104,9 @@ class CLMNIST(VisionDataset, BaseDataset):
         imb_factor=1.0,
         pretrain=None,
         seed=1126,
-        dataset="MNIST",
+        dataset=None,
     ):
+        self.root = root
         self.data_type = data_type
         self.num_classes = 10
         self.input_dim = 1 * 28 * 28
@@ -116,7 +117,7 @@ class CLMNIST(VisionDataset, BaseDataset):
         self.imb_factor = imb_factor
         self.kmean_cluster = kmean_cluster # Number of clustering with K mean method.
         # self.mean, self.std = 0.1307, 0.3081
-
+        
         super(CLMNIST, self).__init__(
             root, train, transform, target_transform)
         
@@ -125,25 +126,26 @@ class CLMNIST(VisionDataset, BaseDataset):
         self.pretrain = pretrain
         self.seed = seed
 
-        if self.dataset == "mnist":
+        if self.dataset == 'mnist':
             self.dataset = self.dataset.upper()
-        elif self.dataset == "kmnist":
+        elif self.dataset == 'kmnist':
             self.dataset = self.dataset.upper()
-        elif self.dataset == "fashionmnist":
-            self.dataset = "FashionMNIST"
+        elif self.dataset == 'fashionmnist':
+            self.dataset = 'FashionMNIST'
         
-        if self.dataset == "MNIST":
+        if self.dataset == 'MNIST':
             self.mean, self.std = 0.1307, 0.3081
-        elif self.dataset == "FashionMNIST":
+        elif self.dataset == 'FashionMNIST':
             self.mean, self.std = 0.2860, 0.3530
-        elif self.dataset == "KMNIST":
+        elif self.dataset == 'KMNIST':
             self.mean, self.std = 0.2860, 0.3530
         else:
             raise NotImplementedError
 
-        if self._check_legacy_exist():
-            self.data, self.targets = self._load_legacy_data()
-            return
+        if self.dataset in ('MNIST', 'FashionMNIST'):
+            if self._check_legacy_exist():
+                self.data, self.targets = self._load_legacy_data()
+                return
 
         if download:
             self.download()
@@ -153,9 +155,9 @@ class CLMNIST(VisionDataset, BaseDataset):
 
         self.data, self.targets = self._load_data()
 
-        if self.data_type =="train":
+        if self.data_type == 'train':
             if self.imb_type is not None:
-                self.img_num_list = self.get_img_num_per_cls(self.num_classes, self.imb_type, self.imb_factor)
+                self.img_num_list, self.img_max = self.get_img_num_per_cls(self.num_classes, self.imb_type, self.imb_factor)
                 self.gen_imbalanced_data(self.img_num_list)
             
             if max_train_samples: #limit the size of the training dataset to max_train_samples
@@ -166,7 +168,7 @@ class CLMNIST(VisionDataset, BaseDataset):
             self.gen_complementary_target()
 
         self.idx_train = len(self.data)
-        if self.data_type == "train" and not validate:
+        if self.data_type == 'train' and not validate:
             if augment:
                 self.transform=Compose([
                     RandomHorizontalFlip(),
@@ -185,7 +187,7 @@ class CLMNIST(VisionDataset, BaseDataset):
                 ToTensor(),
                 Normalize(mean=self.mean, std=self.std),
             ])
-        if self.data_type =="train":
+        if self.data_type =='train':
             if self.kmean_cluster != 0:
                 self.k_mean_targets = self.features_space()
                 print("Done: K_Mean Cluster")
@@ -223,14 +225,14 @@ class CLMNIST(VisionDataset, BaseDataset):
         Returns:
             tuple: (image, target) where target is index of the target class.
         """
-        if self.data_type == "train":
+        if self.data_type == 'train':
             if self.imb_type is not None:
                 img, target, true_target, k_mean_target = self.data[index], self.targets[index], self.true_targets[index], self.k_mean_targets[index]
                 img = Image.fromarray(img, mode='L')
             else:
                 img, target, true_target, k_mean_target = self.data[index], self.targets[index], self.true_targets[index], self.k_mean_targets[index]
                 img = Image.fromarray(img.numpy(), mode='L')
-        if self.data_type == "test":
+        if self.data_type == 'test':
             img, target = self.data[index], int(self.targets[index])
             img = Image.fromarray(img.numpy(), mode='L')
         # doing this so that it is consistent with all other datasets
@@ -243,8 +245,8 @@ class CLMNIST(VisionDataset, BaseDataset):
         if self.target_transform is not None:
             target = self.target_transform(target)
 
-        if self.data_type == "train":
-            return img, target, true_target, k_mean_target
+        if self.data_type == 'train':
+            return img, target, true_target, k_mean_target, self.img_max
         else:
             return img, target
 

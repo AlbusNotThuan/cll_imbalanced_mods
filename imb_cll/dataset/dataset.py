@@ -1,6 +1,7 @@
 # from .cl_cifar import CLCIFAR10
 from .clcifar_cluster_label import CLCIFAR20, CLCIFAR10, CLCIFAR100
 from .clmnist_cluster_label import CLMNIST, CLFashionMNIST, CLKMNIST
+from .clcifar_nn_label import NCLCIFAR10, NCLCIFAR20, NCLCIFAR100
 # from torch.utils.data import DataLoader, Dataset
 
 def prepare_dataset(dataset, data_type, max_train_samples=None, multi_label=False, augment=False, imb_type=None, imb_factor=1.0):
@@ -23,6 +24,47 @@ def prepare_dataset(dataset, data_type, max_train_samples=None, multi_label=Fals
         raise NotImplementedError
     return dataset, dataset.input_dim, dataset.num_classes
 
+def prepare_neighbour_dataset(dataset, data_type=None, max_train_samples=None, multi_label=False, weight=None, imb_type=None, imb_factor=1.0, pretrain=None):
+
+    if dataset == "CIFAR10":
+        if data_type == "train":
+            dataset = NCLCIFAR10(
+                root="./data/cifar10",
+                train=True,
+                data_type=data_type,
+                download=True,
+                max_train_samples=max_train_samples,
+                multi_label=multi_label,
+                weight=weight,
+                imb_type=imb_type,
+                imb_factor=imb_factor,
+                pretrain=pretrain,
+                dataset=dataset,
+            )
+        else:
+            dataset = NCLCIFAR10(root="./data/cifar10", train=False, data_type=data_type, dataset=dataset)
+    elif dataset == "CIFAR20":
+        if data_type == "train":
+            dataset = NCLCIFAR20(
+                root="./data/cifar20",
+                train=True,
+                data_type=data_type,
+                download=True,
+                max_train_samples=max_train_samples,
+                multi_label=multi_label,
+                weight=weight,
+                imb_type=imb_type,
+                imb_factor=imb_factor,
+                pretrain=pretrain,
+                dataset=dataset,
+            )
+        else:
+            dataset = NCLCIFAR20(root="./data/cifar20", train=False, data_type=data_type, dataset=dataset)
+    else:
+        raise NotImplementedError
+    
+    return dataset, dataset.input_dim, dataset.num_classes
+
 def prepare_cluster_dataset(dataset, data_type=None, kmean_cluster= None, max_train_samples=None, multi_label=False, augment=False, imb_type=None, imb_factor=1.0, pretrain=None):
 
     if dataset == "CIFAR10":
@@ -42,7 +84,7 @@ def prepare_cluster_dataset(dataset, data_type=None, kmean_cluster= None, max_tr
                 dataset=dataset,
             )
         else:
-            dataset = CLCIFAR10(root="./data/cifar10", train=False, data_type=data_type)
+            dataset = CLCIFAR10(root="./data/cifar10", train=False, data_type=data_type, dataset=dataset)
     elif dataset == "CIFAR20":
         if data_type == "train":
             dataset = CLCIFAR20(
@@ -60,7 +102,7 @@ def prepare_cluster_dataset(dataset, data_type=None, kmean_cluster= None, max_tr
                 dataset=dataset,
             )
         else:
-            dataset = CLCIFAR20(root="./data/cifar20", train=False, data_type=data_type)
+            dataset = CLCIFAR20(root="./data/cifar20", train=False, data_type=data_type, dataset=dataset)
     elif dataset == "MNIST":
         if data_type == "train":
             dataset = CLMNIST(
@@ -78,7 +120,7 @@ def prepare_cluster_dataset(dataset, data_type=None, kmean_cluster= None, max_tr
                 dataset=dataset,
             )
         else:
-            dataset = CLMNIST(root="./data/mnist", train=False, data_type=data_type)
+            dataset = CLMNIST(root="./data/mnist", train=False, data_type=data_type, dataset=dataset)
     elif dataset == "FashionMNIST":
         if data_type == "train":
             dataset = CLFashionMNIST(
@@ -96,7 +138,7 @@ def prepare_cluster_dataset(dataset, data_type=None, kmean_cluster= None, max_tr
                 dataset=dataset,
             )
         else:
-            dataset = CLFashionMNIST(root="./data/FashionMNIST", train=False, data_type=data_type)
+            dataset = CLFashionMNIST(root="./data/FashionMNIST", train=False, data_type=data_type, dataset=dataset)
 
     elif dataset == "KMNIST":
         if data_type == "train":
@@ -115,7 +157,7 @@ def prepare_cluster_dataset(dataset, data_type=None, kmean_cluster= None, max_tr
                 dataset=dataset,
             )
         else:
-            dataset = CLKMNIST(root="./data/KMNIST", train=False, data_type=data_type)
+            dataset = CLKMNIST(root="./data/KMNIST", train=False, data_type=data_type, dataset=dataset)
     else:
         raise NotImplementedError
     

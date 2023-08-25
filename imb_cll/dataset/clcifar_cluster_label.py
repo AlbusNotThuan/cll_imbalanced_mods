@@ -160,7 +160,7 @@ class CLCIFAR10(VisionDataset, BaseDataset):
     }
 
     def __init__(self,
-        root="../data/cifar10",
+        root=None,
         train=True,
         data_type=None,
         transform=None,
@@ -175,8 +175,9 @@ class CLCIFAR10(VisionDataset, BaseDataset):
         imb_factor=1.0,
         pretrain=None,
         seed=1126,
-        dataset="cifar10",
+        dataset=None,
     ):
+        self.root = root
         self.data_type = data_type
         self.num_classes = 10
         self.input_dim = 3 * 32 * 32
@@ -231,7 +232,7 @@ class CLCIFAR10(VisionDataset, BaseDataset):
 
         if self.data_type =="train":
             if self.imb_type is not None:
-                self.img_num_list = self.get_img_num_per_cls(self.num_classes, self.imb_type, self.imb_factor)
+                self.img_num_list, self.img_max = self.get_img_num_per_cls(self.num_classes, self.imb_type, self.imb_factor)
                 self.gen_imbalanced_data(self.img_num_list)
             
             if max_train_samples: #limit the size of the training dataset to max_train_samples
@@ -310,7 +311,7 @@ class CLCIFAR10(VisionDataset, BaseDataset):
             target = self.target_transform(target)
 
         if self.data_type == "train":
-            return img, target, true_target, k_mean_target
+            return img, target, true_target, k_mean_target, self.img_max
         else:
             return img, target
     
@@ -347,7 +348,7 @@ class CLCIFAR10(VisionDataset, BaseDataset):
             else:
                 num_channel = 3
             model_simsiam.conv1 = nn.Conv2d(num_channel, 64, kernel_size=3, stride=1, padding=1, bias=False)
-            model_simsiam.maxpool = nn.Identity()
+            # model_simsiam.maxpool = nn.Identity()
 
             transform=Compose([
                 ToTensor(),
@@ -437,7 +438,7 @@ class CLCIFAR20(CLCIFAR100):
     }
 
     def __init__(self,
-        root="../data/cifar100",
+        root= None,
         train=True,
         data_type=None,
         transform=None,
@@ -452,7 +453,7 @@ class CLCIFAR20(CLCIFAR100):
         imb_factor=1.0,
         pretrain=None,
         seed=1126,
-        dataset="cifar20",
+        dataset=None,
     ):
         self.data_type = data_type
         self.num_classes = 20
@@ -510,7 +511,7 @@ class CLCIFAR20(CLCIFAR100):
 
         if self.data_type =="train":
             if self.imb_type is not None:
-                self.img_num_list = self.get_img_num_per_cls(self.num_classes, self.imb_type, self.imb_factor)
+                self.img_num_list, self.img_max = self.get_img_num_per_cls(self.num_classes, self.imb_type, self.imb_factor)
                 self.gen_imbalanced_data(self.img_num_list)
             
             if max_train_samples: #limit the size of the training dataset to max_train_samples
@@ -521,7 +522,6 @@ class CLCIFAR20(CLCIFAR100):
             self.gen_complementary_target()
         
         self.idx_train = len(self.data)
-
         self.mean, self.std = [0.5071, 0.4865, 0.4409], [0.2673, 0.2564, 0.2762]
 
         if self.data_type == "train" and not validate:
