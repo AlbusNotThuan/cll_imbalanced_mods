@@ -175,14 +175,14 @@ class CLCIFAR10(VisionDataset, BaseDataset):
         imb_factor=1.0,
         pretrain=None,
         seed=1126,
-        dataset=None,
+        input_dataset=None,
     ):
         self.root = root
         self.data_type = data_type
         self.num_classes = 10
         self.input_dim = 3 * 32 * 32
         self.multi_label = multi_label
-        self.dataset = dataset
+        self.input_dataset = input_dataset
         self.imb_type = imb_type
         self.imb_factor = imb_factor
         self.kmean_cluster = kmean_cluster # Number of clustering with K mean method.
@@ -249,10 +249,18 @@ class CLCIFAR10(VisionDataset, BaseDataset):
         # print("The range of index {}".format(self.idx_train[:10]))
 
         self.mean, self.std = [0.4914, 0.4822, 0.4465], [0.247,  0.2435, 0.2616]
+        # self.mean, self.std = 0.1307, 0.3081
+
+        # Define a custom transform to convert images to grayscale
+        class GrayscaleTransform(object):
+            def __call__(self, img):
+                gray_img = img.convert('L')  # Convert to grayscale using 'L' mode
+                return gray_img
 
         if self.data_type == "train" and not validate:
             if augment:
                 self.transform=Compose([
+                    # GrayscaleTransform(),  # Convert to grayscale
                     RandomHorizontalFlip(),
                     RandomCrop(32, 4, padding_mode='reflect'),
                     ToTensor(),
@@ -260,12 +268,14 @@ class CLCIFAR10(VisionDataset, BaseDataset):
                 ])
             else:
                 self.transform=Compose([
+                # GrayscaleTransform(),  # Convert to grayscale
                 ToTensor(),
                 Normalize(mean=self.mean, std=self.std),
             ])
 
         else:
             self.transform=Compose([
+                # GrayscaleTransform(),  # Convert to grayscale
                 ToTensor(),
                 Normalize(mean=self.mean, std=self.std),
             ])
@@ -343,7 +353,7 @@ class CLCIFAR10(VisionDataset, BaseDataset):
     def features_space(self):
         if self.data_type == "train":
             model_simsiam = resnet18()
-            if self.dataset in ('MNIST', 'FashionMNIST'):
+            if self.input_dataset in ('MNIST', 'FashionMNIST', 'KMNIST'):
                 num_channel = 1
             else:
                 num_channel = 3
@@ -382,7 +392,7 @@ class CLCIFAR10(VisionDataset, BaseDataset):
             features = torch.cat(features, dim=0).cpu().detach().numpy()
 
         # Perform K-means clustering
-        kmeans = KMeans(n_clusters=self.kmean_cluster, random_state=42)
+        kmeans = KMeans(n_clusters=self.kmean_cluster, random_state=1126)
         cluster_labels = kmeans.fit_predict(features)
 
         classes, class_counts = np.unique(cluster_labels, return_counts=True)
@@ -453,13 +463,13 @@ class CLCIFAR20(CLCIFAR100):
         imb_factor=1.0,
         pretrain=None,
         seed=1126,
-        dataset=None,
+        input_dataset=None,
     ):
         self.data_type = data_type
         self.num_classes = 20
         self.input_dim = 3 * 32 * 32
         self.multi_label = multi_label
-        self.dataset = dataset
+        self.input_dataset = input_dataset
         self.imb_type = imb_type
         self.imb_factor = imb_factor
         self.kmean_cluster = kmean_cluster # Number of clustering with K mean method.
@@ -523,10 +533,18 @@ class CLCIFAR20(CLCIFAR100):
         
         self.idx_train = len(self.data)
         self.mean, self.std = [0.5071, 0.4865, 0.4409], [0.2673, 0.2564, 0.2762]
+        # self.mean, self.std = 0.1307, 0.3081
+
+        # Define a custom transform to convert images to grayscale
+        class GrayscaleTransform(object):
+            def __call__(self, img):
+                gray_img = img.convert('L')  # Convert to grayscale using 'L' mode
+                return gray_img
 
         if self.data_type == "train" and not validate:
             if augment:
                 self.transform=Compose([
+                    # GrayscaleTransform(),  # Convert to grayscale
                     RandomHorizontalFlip(),
                     RandomCrop(32, 4, padding_mode='reflect'),
                     ToTensor(),
@@ -534,12 +552,14 @@ class CLCIFAR20(CLCIFAR100):
                 ])
             else:
                 self.transform=Compose([
+                # GrayscaleTransform(),  # Convert to grayscale
                 ToTensor(),
                 Normalize(mean=self.mean, std=self.std),
             ])
 
         else:
             self.transform=Compose([
+                # GrayscaleTransform(),  # Convert to grayscale
                 ToTensor(),
                 Normalize(mean=self.mean, std=self.std),
             ])

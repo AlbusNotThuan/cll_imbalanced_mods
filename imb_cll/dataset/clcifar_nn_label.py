@@ -179,14 +179,14 @@ class NCLCIFAR10(VisionDataset, BaseDataset):
         noise=0,
         num_iter=100,
         weight=None,
-        dataset=None,
+        input_dataset=None,
     ):
         self.root = root
         self.data_type = data_type
         self.num_classes = 10
         self.input_dim = 3 * 32 * 32
         self.multi_label = multi_label
-        self.dataset = dataset
+        self.input_dataset = input_dataset
         self.imb_type = imb_type
         self.imb_factor = imb_factor
 
@@ -519,7 +519,7 @@ class NCLCIFAR20(NCLCIFAR10):
         noise=0,
         num_iter=100,
         weight=None,
-        dataset=None,):
+        input_dataset=None,):
 
         self.root = root
         self.data_type = data_type
@@ -528,7 +528,7 @@ class NCLCIFAR20(NCLCIFAR10):
         self.multi_label = multi_label
         self.transform = transform
         self.target_transform = target_transform
-        self.dataset = dataset
+        self.input_dataset = input_dataset
         self.imb_type = imb_type
         self.imb_factor = imb_factor
         self.validate = validate

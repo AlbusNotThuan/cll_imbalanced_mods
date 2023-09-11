@@ -1,8 +1,62 @@
 import torch.optim as optim
 import torch
 import numpy as np
+import torch.nn as nn
 from sklearn.metrics import confusion_matrix
-from imb_cll.utils.metrics import shot_acc
+from imb_cll.utils.metrics import shot_acc, accuracy
+
+def validate(model, dataloader, eval_n_epoch, epoch, device):
+
+    losses = AverageMeter('Loss', ':.4e')
+    top1 = AverageMeter('Acc@1', ':6.2f')
+    top5 = AverageMeter('Acc@5', ':6.2f')
+
+    all_preds = list()
+    all_targets = list()
+
+    model.eval()
+    criterion = nn.CrossEntropyLoss(reduction='none').to(device)
+
+    with torch.no_grad():
+        for i, (inputs, true_labels) in enumerate(dataloader):
+            inputs, true_labels = inputs.to(device), true_labels.to(device)
+            outputs = model(inputs)
+
+            acc1, acc5 = accuracy(outputs, true_labels, topk=(1, 5))
+            _, pred = torch.max(outputs, 1)
+            all_preds.extend(pred.cpu().numpy())
+            all_targets.extend(true_labels.cpu().numpy())
+            loss = criterion(outputs, true_labels).mean()
+
+            # measure accuracy and record loss
+            losses.update(loss.item(), inputs.size(0))
+            top1.update(acc1[0], inputs.size(0))
+            top5.update(acc5[0], inputs.size(0))
+
+            if i % eval_n_epoch == 0:
+                output = ('Epoch: [{0}][{1}/{2}]\t'
+                    'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
+                    'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
+                    'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
+                        epoch,
+                        i,
+                        len(dataloader),
+                        loss=losses,
+                        top1=top1,
+                        top5=top5))
+                print(output)
+
+        cls_acc_string = compute_metrics_and_record(all_preds,
+                                all_targets,
+                                losses,
+                                top1,
+                                top5,
+                                flag='Testing')
+        
+    if cls_acc_string is not None:
+            return top1.avg, cls_acc_string
+    else:
+        return top1.avg
 
 def num_img_per_class(img_max, cls_num, imb_type, imb_factor):
     cls_num_list = []
@@ -23,7 +77,8 @@ def num_img_per_class(img_max, cls_num, imb_type, imb_factor):
 def weighting_calculation(dataset_name, imb_factor, n_weight):
     if dataset_name == "CIFAR10":
         if imb_factor == 0.01:
-            pretrain = "./imb_cll_pretrained/CIFAR10/CIFAR10_checkpoint_0799_-0.7960.pth.tar"
+            # pretrain = "./imb_cll_pretrained/CIFAR10/CIFAR10_checkpoint_0799_-0.7960.pth.tar"
+            pretrain = "./imb_cll_pretrained/CIFAR10/CIFAR10_input32_checkpoint_0799_-0.8011.pth.tar"
             weights = torch.tensor([1.44308171, 1.14900082, 1.02512971, 0.96447884, 0.93054867, 0.91227983, 0.90093544, 0.89476267, 0.89110236, 0.88867995])
             # weights = torch.tensor([0.05061136, 0.07689979, 0.12113387, 0.19503667, 0.31880537, 0.52458985, 0.86834894, 1.44262727, 2.40922305, 3.99272382])
             weights = weights ** n_weight
@@ -33,7 +88,8 @@ def weighting_calculation(dataset_name, imb_factor, n_weight):
             weights = weights ** n_weight
     elif dataset_name == "CIFAR20":
         if imb_factor == 0.01:
-            pretrain = "./imb_cll_pretrained/CIFAR20/CIFAR20_checkpoint_0799_-0.7825.pth.tar"
+            # pretrain = "./imb_cll_pretrained/CIFAR20/CIFAR20_checkpoint_0799_-0.7825.pth.tar"
+            pretrain = "./imb_cll_pretrained/CIFAR20/CIFAR20_input32_checkpoint_0799_-0.7561.pth.tar"
             weights = torch.tensor([1.20217289, 1.13594089, 1.08908254, 1.0550147,  1.02975162, 1.01078401, 0.99631446, 0.98537103, 0.97687792, 0.97037571, 0.96528757, 0.96132228, 0.95828854, 0.95592451, 0.95397714, 0.95252198, 0.95139334, 0.95050849, 0.94978578, 0.94930461])
             weights = weights ** n_weight
         elif imb_factor == 1:
@@ -51,7 +107,8 @@ def weighting_calculation(dataset_name, imb_factor, n_weight):
             weights = weights ** n_weight
     elif dataset_name == "MNIST":
         if imb_factor == 0.01:
-            pretrain = "./imb_cll_pretrained/MNIST/MNIST_checkpoint_0799_-0.8831.pth.tar"
+            # pretrain = "./imb_cll_pretrained/MNIST/MNIST_checkpoint_0799_-0.8831.pth.tar"
+            pretrain = "./imb_cll_pretrained/MNIST/MNIST_NoFlipCrop_checkpoint_0799_-0.8772.pth.tar"
             weights = torch.tensor([1.3762853, 1.11227572, 1.04531862, 0.96738018, 0.9514026, 0.91518053, 0.91251744, 0.90881726, 0.90619416, 0.90462819])
             weights = weights ** n_weight
         elif imb_factor == 1:
@@ -60,7 +117,8 @@ def weighting_calculation(dataset_name, imb_factor, n_weight):
             weights = weights ** n_weight
     elif dataset_name == "KMNIST":
         if imb_factor == 0.01:
-            pretrain = "./imb_cll_pretrained/KMNIST/KMNIST_checkpoint_0799_-0.8738.pth.tar"
+            # pretrain = "./imb_cll_pretrained/KMNIST/KMNIST_checkpoint_0799_-0.8738.pth.tar"
+            pretrain = "./imb_cll_pretrained/KMNIST/KMNIST_noflip_checkpoint_0799_-0.8990.pth.tar"
             weights = torch.tensor([1.37520534, 1.1097013,  1.04209213, 0.96593773, 0.9537242, 0.92060064, 0.91322734, 0.90291396, 0.90958861, 0.90700876])
             weights = weights ** n_weight
         elif imb_factor == 1:
