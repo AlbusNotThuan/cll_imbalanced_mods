@@ -1,27 +1,26 @@
 import codecs
 import os
 import os.path
-import shutil
-import string
 import sys
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.error import URLError
-import numpy as np
-import torch
 from PIL import Image
+import os
+import os.path
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torchvision.datasets.vision import VisionDataset
+from torchvision.datasets.utils import check_integrity, download_and_extract_archive
 from torchvision.models import resnet18
 from torchvision.transforms import Compose, ToTensor, Normalize, RandomCrop, RandomHorizontalFlip
-from torchvision.datasets.utils import download_and_extract_archive, extract_archive, verify_str_arg, check_integrity
-from torchvision.datasets.vision import VisionDataset
 from .base_dataset import BaseDataset
-from sklearn.cluster import KMeans
 
+from tqdm.auto import tqdm
 
-class CLMNIST(VisionDataset, BaseDataset):
+class NCLMNIST(VisionDataset, BaseDataset):
     """`MNIST <http://yann.lecun.com/exdb/mnist/>`_ Dataset.
 
     Args:
@@ -84,26 +83,26 @@ class CLMNIST(VisionDataset, BaseDataset):
     def test_data(self):
         warnings.warn("test_data has been renamed data")
         return self.data
-
-
-    def __init__(
-        self,
+    
+    def __init__(self,
         root=None,
         train=True,
         data_type=None,
-        # transform=transforms.ToTensor(),
         transform=None,
         validate=False,
         target_transform=None,
         download=True,
-        kmean_cluster=None,
         max_train_samples=None,
         multi_label=False,
-        augment=False,
         imb_type=None,
         imb_factor=1.0,
+        num_comp=1,
+        num_neighbors=64,
         pretrain=None,
         seed=1126,
+        noise=0,
+        num_iter=100,
+        weight=None,
         input_dataset=None,
     ):
         self.root = root
@@ -111,20 +110,20 @@ class CLMNIST(VisionDataset, BaseDataset):
         self.num_classes = 10
         self.input_dim = 1 * 28 * 28
         self.multi_label = multi_label
-        self.multi_label = multi_label
         self.input_dataset = input_dataset
         self.imb_type = imb_type
         self.imb_factor = imb_factor
-        self.kmean_cluster = kmean_cluster # Number of clustering with K mean method.
-        # self.mean, self.std = 0.1307, 0.3081
         
-        super(CLMNIST, self).__init__(
+        super(NCLMNIST, self).__init__(
             root, train, transform, target_transform)
         
         self.train = train  # training set or test set
         self.validate = validate
         self.pretrain = pretrain
         self.seed = seed
+        self.noise = noise
+        self.num_iter = num_iter
+        self.weight = weight
 
         if self.input_dataset == 'mnist':
             self.input_dataset = self.input_dataset.upper()
@@ -165,33 +164,52 @@ class CLMNIST(VisionDataset, BaseDataset):
                 self.data = self.data[:train_len]
                 self.targets = self.targets[:train_len]
 
-            self.gen_complementary_target()
+        self.rng = np.random.default_rng(self.seed)
+        self.idx = self.rng.permutation(len(self.targets))
+        self.idx_train = self.idx[:len(self.data)]
 
-        self.idx_train = len(self.data)
-        if self.data_type == 'train' and not validate:
-            if augment:
-                self.transform=Compose([
-                    RandomHorizontalFlip(),
-                    RandomCrop(28, 4, padding_mode='reflect'),
-                    ToTensor(),
-                    Normalize(mean=self.mean, std=self.std),
-                ])
-            else:
-                self.transform=Compose([
+        self.num_comp = num_comp
+        self.num_neighbors = num_neighbors
+
+        if self.data_type in ("train", "val"):
+            self.comp_labels = self.generate_multi_compl_labels()
+
+        if self.data_type == "train" and not validate:
+            ol = []
+            for i in range(len(self.data)):
+                ol.append(self.targets[self.idx_train[i]])
+            ol = torch.LongTensor(ol)
+            K = 10
+            # # T = (torch.ones(K,K) - torch.eye(K)) / (K-1)
+            # # soft_cl = T[ol]
+
+            # orig_cl = F.nll_loss(-self.comp_labels, self.comp)
+            # noise_cl = F.nll_loss(-self.comp_labels, ol)
+            # res_cl = (1 - orig_cl - noise_cl) / (K-2)
+
+            # # margin calculation
+            # comp_ = self.comp_labels.clone().scatter(1, ol.unsqueeze(1), 1)
+            # min_except_ol = torch.min(comp_, dim=-1)[0]
+            # margin = min_except_ol - F.nll_loss(-self.comp_labels, ol, reduction="none") 
+            # margin_avg = margin.mean()
+
+            # # least_cl = torch.min(self.comp_labels)[1]
+            least_cl = (ol == torch.min(self.comp_labels, dim=-1)[1]).float().mean()
+            print(f"{least_cl:.4f}")
+            # print(f"{least_cl:.4f} {margin_avg:.4f} {orig_cl:.4f} {noise_cl:.4f} {res_cl:.4f}")
+
+        if self.data_type == "train" and not validate:
+            self.transform=Compose([
+                # RandomHorizontalFlip(),
+                # RandomCrop(32, 4, padding_mode='reflect'),
                 ToTensor(),
                 Normalize(mean=self.mean, std=self.std),
             ])
-
         else:
             self.transform=Compose([
                 ToTensor(),
                 Normalize(mean=self.mean, std=self.std),
-            ])
-        if self.data_type =='train':
-            if self.kmean_cluster != 0:
-                self.k_mean_targets = self.features_space()
-                print("Done: K_Mean Cluster")
-        
+            ])      
 
     def _check_legacy_exist(self):
         processed_folder_exists = os.path.exists(self.processed_folder)
@@ -227,10 +245,10 @@ class CLMNIST(VisionDataset, BaseDataset):
         """
         if self.data_type == 'train':
             if self.imb_type is not None:
-                img, target, true_target, k_mean_target = self.data[index], self.targets[index], self.true_targets[index], self.k_mean_targets[index]
+                img, target = self.data[self.idx_train[index]], self.targets[self.idx_train[index]]
                 img = Image.fromarray(img, mode='L')
             else:
-                img, target, true_target, k_mean_target = self.data[index], self.targets[index], self.true_targets[index], self.k_mean_targets[index]
+                img, target = self.data[self.idx_train[index]], self.targets[self.idx_train[index]]
                 img = Image.fromarray(img.numpy(), mode='L')
         if self.data_type == 'test':
             img, target = self.data[index], int(self.targets[index])
@@ -246,12 +264,15 @@ class CLMNIST(VisionDataset, BaseDataset):
             target = self.target_transform(target)
 
         if self.data_type == 'train':
-            return img, target, true_target, k_mean_target, self.img_max
+            return img, target, self.comp_labels[index]
         else:
             return img, target
 
-    def __len__(self) -> int:
-        return len(self.data)
+    def __len__(self):
+        if self.data_type == "train":
+            return len(self.idx_train)
+        else:
+            return len(self.data)
     
     @property
     def raw_folder(self) -> str:
@@ -300,15 +321,14 @@ class CLMNIST(VisionDataset, BaseDataset):
         return f"Split: {split}"
     
     @torch.no_grad()
-    def features_space(self):
-        if self.data_type == "train":
+    def generate_multi_compl_labels(self):
+        if self.data_type == "train" and not self.validate:
             model_simsiam = resnet18()
             
             if self.input_dataset in ('MNIST', 'FashionMNIST', 'KMNIST'):
                 num_channel = 1
             else:
                 num_channel = 3
-            
             model_simsiam.conv1 = nn.Conv2d(num_channel, 64, kernel_size=3, stride=1, padding=1, bias=False)
             # model_simsiam.maxpool = nn.Identity()
 
@@ -316,12 +336,12 @@ class CLMNIST(VisionDataset, BaseDataset):
                 ToTensor(),
                 Normalize(mean=self.mean, std=self.std),
             ])
-            ###NOTED: Need to create imbalanced dataset first and get the idx of training()
-            tensor = torch.stack([transform(self.data[i]) for i in range(0, self.idx_train)])
+
+            # tensor = torch.stack([transform(self.data[i]) for i in range(0, len(self.idx_train))])
+            tensor = torch.stack([transform(self.data[i]) for i in self.idx_train])
             ds = torch.utils.data.TensorDataset(tensor)
             dl = torch.utils.data.DataLoader(ds, batch_size=1024, shuffle=False)
             print(self.pretrain)
-
             checkpoint = torch.load(self.pretrain, map_location="cpu")
             state_dict = checkpoint['state_dict']
             for k in list(state_dict.keys()):
@@ -333,81 +353,70 @@ class CLMNIST(VisionDataset, BaseDataset):
                 del state_dict[k]
             model_simsiam.load_state_dict(state_dict, strict=False)
             model_simsiam.fc = nn.Identity()
-            model_simsiam.cpu()
+            model_simsiam.cuda()
 
-            features = []
+            feature = []
 
             model_simsiam.eval()
-            for input in dl:
-                # features.append(F.normalize(model_simsiam(input.cpu())).cpu())
-                features.append(F.normalize(model_simsiam(torch.cat(input).cpu())).cpu())
-            features = torch.cat(features, dim=0).cpu().detach().numpy()
+            for x in dl:
+                feature.append(F.normalize(model_simsiam(torch.cat(x).cuda())).cpu())
+            feature = torch.cat(feature)
+            self.feature = feature
 
-        # Perform K-means clustering
-        kmeans = KMeans(n_clusters=self.kmean_cluster, random_state=1126)
-        cluster_labels = kmeans.fit_predict(features)
+            # Dist, Idx, neigh = get_kNN(feature.numpy(), 1025)
+            # self.Idx = Idx
 
-        classes, class_counts = np.unique(cluster_labels, return_counts=True)
-        sorted_list = sorted(class_counts, reverse=True)
-        print("The number of each sample into each cluster is {}".format(sorted_list))
+        K = max(self.targets) + 1
+        T = (torch.ones(K,K) - torch.eye(K)) / (K-1)
+        if self.noise > 0:
+            T = (1-self.noise) * T + self.noise * torch.ones(K,K)/K
 
-        return cluster_labels
+        y_oh = F.one_hot(torch.LongTensor(self.targets), K).float()
+        g_cpu = torch.Generator()
+        g_cpu.manual_seed(self.seed)
+        comp = torch.multinomial(y_oh.matmul(torch.Tensor(T)), self.num_comp, generator=g_cpu)
 
-class CLFashionMNIST(CLMNIST):
-    """`Fashion-MNIST <https://github.com/zalandoresearch/fashion-mnist>`_ Dataset.
+        if self.data_type == "train":
+            comp = comp[self.idx_train]
+            if self.validate:
+                comp = F.one_hot(comp.squeeze(),K).float()
+                return comp
 
-    Args:
-        root (string): Root directory of dataset where ``FashionMNIST/raw/train-images-idx3-ubyte``
-            and  ``FashionMNIST/raw/t10k-images-idx3-ubyte`` exist.
-        train (bool, optional): If True, creates dataset from ``train-images-idx3-ubyte``,
-            otherwise from ``t10k-images-idx3-ubyte``.
-        download (bool, optional): If True, downloads the dataset from the internet and
-            puts it in root directory. If dataset is already downloaded, it is not
-            downloaded again.
-        transform (callable, optional): A function/transform that  takes in an PIL image
-            and returns a transformed version. E.g, ``transforms.RandomCrop``
-        target_transform (callable, optional): A function/transform that takes in the
-            target and transforms it.
-    """
+        self.comp = comp.squeeze()
+        comp_oh = F.one_hot(comp,K).float().sum(dim=1)
+        if self.num_neighbors == 0:
+            return comp_oh
 
-    mirrors = ["http://fashion-mnist.s3-website.eu-central-1.amazonaws.com/"]
+        smooth_comp = comp_oh.clone()
 
-    resources = [
-        ("train-images-idx3-ubyte.gz", "8d4fb7e6c68d591d4c3dfef9ec88bf0d"),
-        ("train-labels-idx1-ubyte.gz", "25c81989df183df01b3e8a0aad5dffbe"),
-        ("t10k-images-idx3-ubyte.gz", "bef4ecab320f06d8554ea6380940ec79"),
-        ("t10k-labels-idx1-ubyte.gz", "bb300cfdad3c16e7a12a480ee83cd310"),
-    ]
-    classes = ["T-shirt/top", "Trouser", "Pullover", "Dress", "Coat", "Sandal", "Shirt", "Sneaker", "Bag", "Ankle boot"]
+        sim_matrix = feature @ feature.T
+        sim_matrix = (-(2-2*sim_matrix)).exp()
+        sim_matrix.fill_diagonal_(0)
 
+        val, ind = torch.topk(sim_matrix, self.num_neighbors, dim=-1)
 
-class CLKMNIST(CLMNIST):
-    """`Kuzushiji-MNIST <https://github.com/rois-codh/kmnist>`_ Dataset.
+        if self.weight == "distance":
+            # Distance-based
+            W = torch.zeros_like(sim_matrix).scatter_(1, ind, val)
+        elif self.weight == "rank":
+            # Rank-based
+            W = torch.zeros_like(sim_matrix)
+            for i in range(ind.size(1)):
+                W.scatter_(1, ind[:,i:i+1], 1/(i+1))
 
-    Args:
-        root (string): Root directory of dataset where ``KMNIST/raw/train-images-idx3-ubyte``
-            and  ``KMNIST/raw/t10k-images-idx3-ubyte`` exist.
-        train (bool, optional): If True, creates dataset from ``train-images-idx3-ubyte``,
-            otherwise from ``t10k-images-idx3-ubyte``.
-        download (bool, optional): If True, downloads the dataset from the internet and
-            puts it in root directory. If dataset is already downloaded, it is not
-            downloaded again.
-        transform (callable, optional): A function/transform that  takes in an PIL image
-            and returns a transformed version. E.g, ``transforms.RandomCrop``
-        target_transform (callable, optional): A function/transform that takes in the
-            target and transforms it.
-    """
-
-    mirrors = ["http://codh.rois.ac.jp/kmnist/dataset/kmnist/"]
-
-    resources = [
-        ("train-images-idx3-ubyte.gz", "bdb82020997e1d708af4cf47b453dcf7"),
-        ("train-labels-idx1-ubyte.gz", "e144d726b3acfaa3e44228e80efcd344"),
-        ("t10k-images-idx3-ubyte.gz", "5c965bf0a639b31b8f53240b1b52f4d7"),
-        ("t10k-labels-idx1-ubyte.gz", "7320c461ea6c1c855c0b718fb2a4b134"),
-    ]
-    classes = ["o", "ki", "su", "tsu", "na", "ha", "ma", "ya", "re", "wo"]
+        Z = W.sum(dim=1, keepdim=True)
+        W = W / Z
+ 
+        alpha = 0.9
+        W = W.to_sparse()
+        for i in tqdm(range(self.num_iter)):
+            smooth_comp = alpha * W @ smooth_comp + (1-alpha) * comp_oh
+ 
+        smooth_comp = smooth_comp / smooth_comp.sum(dim=1, keepdim=True)
+ 
+        return smooth_comp
     
+
 def get_int(b: bytes) -> int:
     return int(codecs.encode(b, "hex"), 16)
 

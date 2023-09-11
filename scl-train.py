@@ -97,6 +97,7 @@ def train(args):
     mamix_ratio = args.mamix_ratio
     warm_epoch = args.warm_epoch
     epochs = args.n_epoch
+    input_dataset = args.dataset_name
 
     eval_n_epoch = args.evaluate_step
     batch_size = args.batch_size
@@ -119,22 +120,22 @@ def train(args):
     elif cl_aug:
         print("Use mixup noise-free")
 
-    weights, pretrain = weighting_calculation(dataset_name, imb_factor, n_weight)
+    weights, pretrain = weighting_calculation(input_dataset, imb_factor, n_weight)
     if neighbor:
         print("Use prepare_neighbour_dataset")
         train_data = "train"
-        trainset, input_dim, num_classes = prepare_neighbour_dataset(dataset=args.dataset_name, data_type=train_data, max_train_samples=None, multi_label=False, 
+        trainset, input_dim, num_classes = prepare_neighbour_dataset(input_dataset=input_dataset, data_type=train_data, max_train_samples=None, multi_label=False, 
                                         weight=weight, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain)
         test_data = "test"
-        testset, input_dim, num_classes = prepare_neighbour_dataset(dataset=args.dataset_name, data_type=test_data, max_train_samples=None, multi_label=False, 
+        testset, input_dim, num_classes = prepare_neighbour_dataset(input_dataset=input_dataset, data_type=test_data, max_train_samples=None, multi_label=False, 
                                         weight=weight, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain)
     else:
         print("Use prepare_cluster_dataset")
         train_data = "train"
-        trainset, input_dim, num_classes = prepare_cluster_dataset(dataset=args.dataset_name, data_type=train_data, kmean_cluster=k_cluster, max_train_samples=None, multi_label=False, 
+        trainset, input_dim, num_classes = prepare_cluster_dataset(input_dataset=input_dataset, data_type=train_data, kmean_cluster=k_cluster, max_train_samples=None, multi_label=False, 
                                         augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain)
         test_data = "test"
-        testset, input_dim, num_classes = prepare_cluster_dataset(dataset=args.dataset_name, data_type=test_data, kmean_cluster=k_cluster, max_train_samples=None, multi_label=False, 
+        testset, input_dim, num_classes = prepare_cluster_dataset(input_dataset=input_dataset, data_type=test_data, kmean_cluster=k_cluster, max_train_samples=None, multi_label=False, 
                                         augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain)
 
     trainloader = DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
@@ -152,7 +153,8 @@ def train(args):
         raise NotImplementedError
 
     for epoch in range(0, epochs):
-        learning_rate = adjust_learning_rate(epochs, epoch, lr)
+        # learning_rate = adjust_learning_rate(epochs, epoch, lr)
+        learning_rate = lr
         training_loss = 0.0
         model.train()
 
@@ -185,13 +187,13 @@ def train(args):
 
                 if mixup:
                     if intra_class:
-                        _input_mix, target_a, target_b, lam, count_error = aug_intra_class(inputs, labels, true_labels, k_mean_targets, device)
+                        _input_mix, target_a, target_b, lam, count_error = aug_intra_class(inputs, labels, true_labels, k_mean_targets, device, dataset_name)
                         total_count_error += count_error
                     elif three_images_intra_class:
-                        _input_mix, target_a, target_b, target_c, lam1, lam2, lam3, count_error = aug_intra_class_three_images(inputs, labels, true_labels, k_mean_targets, device)
+                        _input_mix, target_a, target_b, target_c, lam1, lam2, lam3, count_error = aug_intra_class_three_images(inputs, labels, true_labels, k_mean_targets, device, dataset_name)
                         total_count_error += count_error
                     elif four_images_intra_class:
-                        _input_mix, target_a, target_b, target_c, target_d, lam1, lam2, lam3, lam4, count_error = aug_intra_class_four_images(inputs, labels, true_labels, k_mean_targets, device)
+                        _input_mix, target_a, target_b, target_c, target_d, lam1, lam2, lam3, lam4, count_error = aug_intra_class_four_images(inputs, labels, true_labels, k_mean_targets, device, dataset_name)
                         total_count_error += count_error
                     elif cl_aug:
                         _input_mix, target_a, target_b, lam = mixup_cl_data(inputs, labels, true_labels, device)
@@ -348,13 +350,13 @@ def train(args):
                 if mixup:
                     # Mixup Data
                     if intra_class:
-                        _input_mix, target_a, target_b, lam, count_error = aug_intra_class(inputs, labels, true_labels, k_mean_targets, device)
+                        _input_mix, target_a, target_b, lam, count_error = aug_intra_class(inputs, labels, true_labels, k_mean_targets, device, dataset_name)
                         total_count_error += count_error
                     elif three_images_intra_class:
-                        _input_mix, target_a, target_b, target_c, lam1, lam2, lam3, count_error = aug_intra_class_three_images(inputs, labels, true_labels, k_mean_targets, device)
+                        _input_mix, target_a, target_b, target_c, lam1, lam2, lam3, count_error = aug_intra_class_three_images(inputs, labels, true_labels, k_mean_targets, device, dataset_name)
                         total_count_error += count_error
                     elif four_images_intra_class:
-                        _input_mix, target_a, target_b, target_c, target_d, lam1, lam2, lam3, lam4, count_error = aug_intra_class_four_images(inputs, labels, true_labels, k_mean_targets, device)
+                        _input_mix, target_a, target_b, target_c, target_d, lam1, lam2, lam3, lam4, count_error = aug_intra_class_four_images(inputs, labels, true_labels, k_mean_targets, device, dataset_name)
                         total_count_error += count_error
                     elif cl_aug:
                         _input_mix, target_a, target_b, lam = mixup_cl_data(inputs, labels, true_labels, device)

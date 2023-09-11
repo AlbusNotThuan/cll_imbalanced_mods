@@ -52,7 +52,7 @@ class BaseDataset:
         if hasattr(self, "data"):
             img_max = len(self.data) / cls_num
             # check for mnist, just take 5900 samples for maximum
-            if self.dataset == "MNIST":
+            if self.input_dataset == "MNIST":
                 img_max = img_max - 100
         # cinic10, tiny-imagenet
         elif hasattr(self, "samples"):
