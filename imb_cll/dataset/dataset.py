@@ -82,7 +82,7 @@ def prepare_neighbour_dataset(input_dataset, data_type=None, max_train_samples=N
     
     return dataset, dataset.input_dim, dataset.num_classes
 
-def prepare_cluster_dataset(input_dataset, data_type=None, kmean_cluster= None, max_train_samples=None, multi_label=False, augment=False, imb_type=None, imb_factor=1.0, pretrain=None):
+def prepare_cluster_dataset(input_dataset, data_type=None, kmean_cluster= None, max_train_samples=None, multi_label=False, augment=False, imb_type=None, imb_factor=1.0, pretrain=None, transition_bias = 2.0):
     if input_dataset == "CIFAR10":
         if data_type == "train":
             dataset = CLCIFAR10(
@@ -98,6 +98,7 @@ def prepare_cluster_dataset(input_dataset, data_type=None, kmean_cluster= None, 
                 imb_factor=imb_factor,
                 pretrain=pretrain,
                 input_dataset=input_dataset,
+                transition_bias=transition_bias
             )
         else:
             dataset = CLCIFAR10(root="./data/cifar10", train=False, data_type=data_type, input_dataset=input_dataset)
@@ -116,6 +117,7 @@ def prepare_cluster_dataset(input_dataset, data_type=None, kmean_cluster= None, 
                 imb_factor=imb_factor,
                 pretrain=pretrain,
                 input_dataset=input_dataset,
+                transition_bias=transition_bias
             )
         else:
             dataset = CLCIFAR20(root="./data/cifar20", train=False, data_type=data_type, input_dataset=input_dataset)
@@ -134,6 +136,7 @@ def prepare_cluster_dataset(input_dataset, data_type=None, kmean_cluster= None, 
                 imb_factor=imb_factor,
                 pretrain=pretrain,
                 input_dataset=input_dataset,
+                transition_bias=transition_bias
             )
         else:
             dataset = CLMNIST(root="./data/mnist", train=False, data_type=data_type, input_dataset=input_dataset)
@@ -152,6 +155,7 @@ def prepare_cluster_dataset(input_dataset, data_type=None, kmean_cluster= None, 
                 imb_factor=imb_factor,
                 pretrain=pretrain,
                 input_dataset=input_dataset,
+                transition_bias=transition_bias
             )
         else:
             dataset = CLFashionMNIST(root="./data/FashionMNIST", train=False, data_type=data_type, input_dataset=input_dataset)
@@ -171,6 +175,7 @@ def prepare_cluster_dataset(input_dataset, data_type=None, kmean_cluster= None, 
                 imb_factor=imb_factor,
                 pretrain=pretrain,
                 input_dataset=input_dataset,
+                transition_bias=transition_bias
             )
         else:
             dataset = CLKMNIST(root="./data/KMNIST", train=False, data_type=data_type, input_dataset=input_dataset)

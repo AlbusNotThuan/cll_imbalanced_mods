@@ -1,11 +1,9 @@
 import codecs
 import os
 import os.path
-import shutil
-import string
 import sys
 import warnings
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Dict
 from urllib.error import URLError
 import numpy as np
 import torch
@@ -15,7 +13,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.models import resnet18
 from torchvision.transforms import Compose, ToTensor, Normalize, RandomCrop, RandomHorizontalFlip
-from torchvision.datasets.utils import download_and_extract_archive, extract_archive, verify_str_arg, check_integrity
+from torchvision.datasets.utils import download_and_extract_archive, check_integrity
 from torchvision.datasets.vision import VisionDataset
 from .base_dataset import BaseDataset
 from sklearn.cluster import KMeans
@@ -105,6 +103,7 @@ class CLMNIST(VisionDataset, BaseDataset):
         pretrain=None,
         seed=1126,
         input_dataset=None,
+        transition_bias=1.0
     ):
         self.root = root
         self.data_type = data_type
@@ -116,6 +115,7 @@ class CLMNIST(VisionDataset, BaseDataset):
         self.imb_type = imb_type
         self.imb_factor = imb_factor
         self.kmean_cluster = kmean_cluster # Number of clustering with K mean method.
+        self.transition_bias = transition_bias
         # self.mean, self.std = 0.1307, 0.3081
         
         super(CLMNIST, self).__init__(
@@ -165,7 +165,10 @@ class CLMNIST(VisionDataset, BaseDataset):
                 self.data = self.data[:train_len]
                 self.targets = self.targets[:train_len]
 
-            self.gen_complementary_target()
+            if self.imb_factor == 1.0:
+                self.gen_bias_complementary_label()
+            else:
+                self.gen_complementary_target()
 
         self.idx_train = len(self.data)
         if self.data_type == 'train' and not validate:

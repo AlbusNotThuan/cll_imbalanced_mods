@@ -62,104 +62,275 @@ def mixup_cl_data(x, y, ytrue, device, alpha=1.0):
                 break
     return mixed_x, y_a, y_b, lam
 
-def aug_intra_class(x, y, ytrue, k_cluster_label, device, dataset_name, alpha=1.0):
+# def aug_intra_class(x, y, ytrue, k_cluster_label, device, dataset_name, alpha=1.0):
+#     '''Returns mixed inputs, pairs of targets, and lambda'''
+#     count_error = 0
+
+#     if alpha > 0:
+#         lam = np.random.beta(alpha, alpha)
+#     else:
+#         lam = 1
+    
+#     batch_size = x.size()[0]
+#     mixed_x = torch.zeros_like(x).to(device)
+#     y_a, y_b = torch.zeros_like(y).to(device), torch.zeros_like(y).to(device)  #to(device)
+
+#     # Precompute random indices that satisfy the condition
+#     matching_indices = (torch.tensor(k_cluster_label)[:, None] == torch.tensor(k_cluster_label)).clone().detach()
+#     for i in range(batch_size):
+#         matching_indices_i = torch.nonzero(matching_indices[i]).squeeze()
+#         if matching_indices_i.numel() >= 1:
+#             # j, k = torch.tensor(np.random.choice(matching_indices_i.clone().detach().cpu().numpy(), 2))
+#             j = torch.from_numpy(np.random.choice(matching_indices_i.cpu().numpy(), 1)).clone().detach()
+
+#             # Move tensors to CPU if they are on CUDA
+#             mixed_x[i] = lam * x[i] + (1 - lam) * x[j] if dataset_name in ("CIFAR10", "CIFAR20") else x[i]
+#             # mixed_x[i] = x[i] if dataset_name in ("CIFAR10", "CIFAR20") else x[i]
+#             y_a[i], y_b[i] = y[i], y[j]
+
+#             # Count the violent case when true label appearing in cl label
+#             if y_a[i] == ytrue[j] or y_b[i] == ytrue[j]:
+#                 count_error += 1
+#     return mixed_x, y_a, y_b, lam, count_error
+def aug_intra_class(x, y, ytrue, k_cluster_label, device, dataset_name, alpha):
     '''Returns mixed inputs, pairs of targets, and lambda'''
     count_error = 0
 
     if alpha > 0:
-        lam = np.random.beta(alpha, alpha)
+        # lam = np.random.beta(alpha, alpha)
+        lam = alpha
     else:
-        lam = 1
+        lam = 1.0
     
     batch_size = x.size()[0]
     mixed_x = torch.zeros_like(x).to(device)
-    y_a, y_b = torch.zeros_like(y).to(device), torch.zeros_like(y).to(device)  #to(device)
-
+    
     # Precompute random indices that satisfy the condition
-    matching_indices = (torch.tensor(k_cluster_label)[:, None] == torch.tensor(k_cluster_label)).clone().detach()
+    matching_indices = (torch.tensor(k_cluster_label[:, None]) == torch.tensor(k_cluster_label)).clone().detach()
+    if dataset_name == "CIFAR20":
+        label_y = torch.zeros(512, 20).to(device)
+    else:
+        label_y = torch.zeros(512, 10).to(device)
+
     for i in range(batch_size):
         matching_indices_i = torch.nonzero(matching_indices[i]).squeeze()
-        if matching_indices_i.numel() >= 1:
-            # j, k = torch.tensor(np.random.choice(matching_indices_i.clone().detach().cpu().numpy(), 2))
-            j = torch.from_numpy(np.random.choice(matching_indices_i.cpu().numpy(), 1)).clone().detach()
+        if matching_indices_i.numel() >= 2:
+            # j, k = torch.tensor(np.random.choice(matching_indices_i.clone().detach().cpu().numpy(), 2, replace=False))
+            if dataset_name == "CIFAR20":
+                indices = torch.from_numpy(np.random.choice(matching_indices_i.cpu().numpy(), 1, replace=False)).clone().detach()
+                # Define the indices and initialize the lam values
+                lam_values = [0] * 20
+                y_values = [0] * 20
+            else:
+                indices = torch.from_numpy(np.random.choice(matching_indices_i.cpu().numpy(), 1, replace=False)).clone().detach()
+                # Define the indices and initialize the lam values
+                lam_values = [0] * 10
+                y_values = [0] * 10
+            indices = torch.cat((torch.tensor([i]), indices))
+            # Calculate distances and lam values in a loop
+            distances = [(1 - lam) if euclidean_distance(x[i], x[index]) != 0 else lam for index in indices]
+            # Calculate lam values
+            for idx, distance in enumerate(distances):
+                lam_values[idx] = distance
+            lam_values = torch.tensor(lam_values)
 
-            # Move tensors to CPU if they are on CUDA
-            mixed_x[i] = lam * x[i] + (1 - lam) * x[j] if dataset_name in ("CIFAR10", "CIFAR20") else x[i]
-            # mixed_x[i] = x[i] if dataset_name in ("CIFAR10", "CIFAR20") else x[i]
-            y_a[i], y_b[i] = y[i], y[j]
+            # Perform weighted calculations for mixed_x
+            if dataset_name in ("CIFAR10", "CIFAR20", "MNIST", "FashionMNIST", "KMNIST"):
+                # mixed_x[i] = sum(lam * x[idx] for lam, idx in zip(lam_values, indices))
+                mixed_x[i] = lam * x[indices[0]] + (1 - lam) * x[indices[1]]
+                # mixed_x[i] = x[i]
+            else:
+                mixed_x[i] = x[i]
+                # mixed_x[i] = sum(lam * x[idx] for lam, idx in zip(lam_values, indices))
+            
+            for idx, index in enumerate(indices):
+                y_values[idx] = y[index]
+            y_values = torch.tensor(y_values)
 
-            # Count the violent case when true label appearing in cl label
-            if y_a[i] == ytrue[j] or y_b[i] == ytrue[j]:
-                count_error += 1
-    return mixed_x, y_a, y_b, lam, count_error
+            label_y[i] = recalculate_lambda_label_sharing(y_values, lam_values)
 
-def aug_intra_class_three_images(x, y, ytrue, k_cluster_label, device, dataset_name, alpha=1.0):
+            # Count the violent case when true label appears in cl label
+            # if (y[i] == ytrue[j] or y[i] == ytrue[k] or y[j] == ytrue[i] or y[j] == ytrue[k] or y[k] == ytrue[i] or y[k] == ytrue[j]):
+            #     count_error += 1
+    return mixed_x, label_y
+
+def aug_intra_class_three_images(x, y, ytrue, k_cluster_label, device, dataset_name, alpha):
     '''Returns mixed inputs, pairs of targets, and lambda'''
     count_error = 0
 
     if alpha > 0:
         # Generate three random mixing coefficients from a Beta distribution
-        lam1 = np.random.beta(alpha, alpha)
-        lam2 = np.random.beta(alpha, alpha)
-        # Calculate the fourth mixing coefficient to satisfy the sum constraint
-        lam3 = 1 - lam1 - lam2
-        lam3 = max(0, lam3)  # Ensure lam3 is non-negative
-        # Normalize the coefficients to ensure they sum up to 1
-        total_lam = lam1 + lam2 + lam3
-        lam1 /= total_lam
-        lam2 /= total_lam
-        lam3 /= total_lam
+        s = np.random.dirichlet((alpha, alpha, alpha), 1)
+        lam1 = s[0][0]
+        lam2 = s[0][1]
+        lam3 = s[0][2]
+
+        # lam = np.random.beta(alpha, alpha)
+        # lam = alpha
     else:
         lam1 = 1/3
         lam2 = 1/3
         lam3 = 1/3
+        # lam = 0.0
     
     batch_size = x.size()[0]
     mixed_x = torch.zeros_like(x).to(device)
-    y_a, y_b, y_c = torch.zeros_like(y).to(device), torch.zeros_like(y).to(device), torch.zeros_like(y).to(device)  #to(device)
-
+    
     # Precompute random indices that satisfy the condition
-    matching_indices = (torch.tensor(k_cluster_label)[:, None] == torch.tensor(k_cluster_label)).clone().detach()
-    lambda_1 = []
-    lambda_2 = []
-    lambda_3 = []
+    matching_indices = (torch.tensor(k_cluster_label[:, None]) == torch.tensor(k_cluster_label)).clone().detach()
+    if dataset_name == "CIFAR20":
+        label_y = torch.zeros(512, 20).to(device)
+    else:
+        label_y = torch.zeros(512, 10).to(device)
 
     for i in range(batch_size):
         matching_indices_i = torch.nonzero(matching_indices[i]).squeeze()
         if matching_indices_i.numel() >= 2:
-            # j, k = torch.tensor(np.random.choice(matching_indices_i.clone().detach().cpu().numpy(), 2))
-            j, k = torch.from_numpy(np.random.choice(matching_indices_i.cpu().numpy(), 2)).clone().detach()
-            indices = [i, j, k]
+            # j, k = torch.tensor(np.random.choice(matching_indices_i.clone().detach().cpu().numpy(), 2, replace=False))
+            if dataset_name == "CIFAR20":
+                indices = torch.from_numpy(np.random.choice(matching_indices_i.cpu().numpy(), 2, replace=False)).clone().detach()
+                # Define the indices and initialize the lam values
+                lam_values = [0] * 20
+                y_values = [0] * 20
+            else:
+                indices = torch.from_numpy(np.random.choice(matching_indices_i.cpu().numpy(), 2, replace=False)).clone().detach()
+                # Define the indices and initialize the lam values
+                lam_values = [0] * 10
+                y_values = [0] * 10
+            indices = torch.cat((torch.tensor([i]), indices))
+
             # Calculate distances and lam values in a loop
             distances = [euclidean_distance(x[i], x[index]) if euclidean_distance(x[i], x[index]) != 0 else 30 for index in indices]
 
-            # Calculate lam values
+            # Calculate lam values with inverse distance weighting
             for idx, distance in enumerate(distances):
-                lam_values = [0] * 3
                 lam_values[idx] = (1 / distance) / sum(1 / dist for dist in distances)
-                if idx == 0:
-                    lambda_1.append(lam_values[0])
-                if idx == 1:
-                    lambda_2.append(lam_values[1])
-                if idx == 2:
-                    lambda_3.append(lam_values[2])
-            # lam_values = torch.tensor(lam_values)
-            # import pdb
-            # pdb.set_trace()
+            lam_values = torch.tensor(lam_values)
 
-            # Move tensors to CPU if they are on CUDA
-            # mixed_x[i] = lam_values[0] * x[i] + lam_values[1] * x[j] + lam_values[2] * x[k] if dataset_name in ("CIFAR10", "CIFAR20") else x[i]
-            mixed_x[i] = x[i] if dataset_name in ("CIFAR10", "CIFAR20") else x[i]
-            y_a[i], y_b[i], y_c[i] = y[i], y[j], y[k]
+            # Lambda X = Lambda Y which generated by Dirichlet distribution
+            # for idx, _ in enumerate(indices):
+            #     lam_values[idx] = s[0][idx]
+            # lam_values = torch.tensor(lam_values)
+
+            # Perform weighted calculations for mixed_x
+            if dataset_name in ("CIFAR10", "CIFAR20", "MNIST", "FashionMNIST", "KMNIST"):
+                # Lambda is equal inverse distance weighting
+                # mixed_x[i] = sum(lam * x[idx] for lam, idx in zip(lam_values, indices))
+
+                # Lambda is equal the Beta distribution from alpha
+                # mixed_x[i] = lam * x[indices[0]] + (1 - lam) * x[indices[1]]
+
+                # Lambda is equal a fix value
+                mixed_x[i] = lam1 * x[indices[0]] + lam2 * x[indices[1]] + lam3 * x[indices[2]]
+            else:
+                mixed_x[i] = x[i]
+            
+            for idx, index in enumerate(indices):
+                y_values[idx] = y[index]
+            y_values = torch.tensor(y_values)
+
+            label_y[i] = recalculate_lambda_label_sharing(y_values, lam_values)
 
             # Count the violent case when true label appears in cl label
-            if (y[i] == ytrue[j] or y[i] == ytrue[k] or y[j] == ytrue[i] or y[j] == ytrue[k] or y[k] == ytrue[i] or y[k] == ytrue[j]):
-                count_error += 1
-    lambda_1 = sum(lambda_1) / len(lambda_1)
-    lambda_2 = sum(lambda_2) / len(lambda_2)
-    lambda_3 = sum(lambda_3) / len(lambda_3)
+            # if (y[i] == ytrue[j] or y[i] == ytrue[k] or y[j] == ytrue[i] or y[j] == ytrue[k] or y[k] == ytrue[i] or y[k] == ytrue[j]):
+            #     count_error += 1
 
-    return mixed_x, y_a, y_b, y_c, lambda_1, lambda_2, lambda_3, count_error
+    return mixed_x, label_y
+
+def recalculate_lambda_label_sharing(y_values, lam_values):
+    final_y_values = []
+
+    # Convert y_values and lam_values to NumPy arrays for better performance
+    y_values = np.array(y_values)
+    lam_values = np.array(lam_values)
+
+    # Initialize an array to store the final_lam values
+    final_lam = np.zeros_like(y_values, dtype=float)
+
+    # Use NumPy indexing and aggregation to calculate final_lam
+    for i in range(len(y_values)):
+        final_lam[i] = np.sum(lam_values[y_values == i])
+
+    for index in final_lam:
+        if index == 0:
+            new_y = 0
+        else:
+            new_y = 1
+        final_y_values.append(new_y)
+
+    final_lam = torch.tensor(final_lam)
+    final_y_values = torch.tensor(final_y_values)
+    
+    return final_y_values * final_lam
+
+# def aug_intra_class_three_images(x, y, ytrue, k_cluster_label, device, dataset_name, alpha=1.0):
+#     '''Returns mixed inputs, pairs of targets, and lambda'''
+#     count_error = 0
+
+#     if alpha > 0:
+#         # Generate three random mixing coefficients from a Beta distribution
+#         lam1 = np.random.beta(alpha, alpha)
+#         lam2 = np.random.beta(alpha, alpha)
+#         # Calculate the fourth mixing coefficient to satisfy the sum constraint
+#         lam3 = 1 - lam1 - lam2
+#         lam3 = max(0, lam3)  # Ensure lam3 is non-negative
+#         # Normalize the coefficients to ensure they sum up to 1
+#         total_lam = lam1 + lam2 + lam3
+#         lam1 /= total_lam
+#         lam2 /= total_lam
+#         lam3 /= total_lam
+#     else:
+#         lam1 = 1/3
+#         lam2 = 1/3
+#         lam3 = 1/3
+    
+#     batch_size = x.size()[0]
+#     mixed_x = torch.zeros_like(x).to(device)
+#     y_a, y_b, y_c = torch.zeros_like(y).to(device), torch.zeros_like(y).to(device), torch.zeros_like(y).to(device)  #to(device)
+
+#     # Precompute random indices that satisfy the condition
+#     matching_indices = (torch.tensor(k_cluster_label)[:, None] == torch.tensor(k_cluster_label)).clone().detach()
+#     lambda_1 = []
+#     lambda_2 = []
+#     lambda_3 = []
+
+#     for i in range(batch_size):
+#         matching_indices_i = torch.nonzero(matching_indices[i]).squeeze()
+#         if matching_indices_i.numel() >= 2:
+#             # j, k = torch.tensor(np.random.choice(matching_indices_i.clone().detach().cpu().numpy(), 2))
+#             j, k = torch.from_numpy(np.random.choice(matching_indices_i.cpu().numpy(), 2)).clone().detach()
+    #         indices = [i, j, k]
+    #         # Calculate distances and lam values in a loop
+    #         distances = [euclidean_distance(x[i], x[index]) if euclidean_distance(x[i], x[index]) != 0 else 30 for index in indices]
+
+    #         # Calculate lam values
+    #         for idx, distance in enumerate(distances):
+    #             lam_values = [0] * 3
+    #             lam_values[idx] = (1 / distance) / sum(1 / dist for dist in distances)
+    #             if idx == 0:
+    #                 lambda_1.append(lam_values[0])
+    #             if idx == 1:
+    #                 lambda_2.append(lam_values[1])
+    #             if idx == 2:
+    #                 lambda_3.append(lam_values[2])
+    #         # lam_values = torch.tensor(lam_values)
+    #         # import pdb
+    #         # pdb.set_trace()
+
+    #         # Move tensors to CPU if they are on CUDA
+    #         mixed_x[i] = lam_values[0] * x[i] + lam_values[1] * x[j] + lam_values[2] * x[k] if dataset_name in ("CIFAR10", "CIFAR20") else x[i]
+    #         # mixed_x[i] = x[i] if dataset_name in ("CIFAR10", "CIFAR20") else x[i]
+    #         y_a[i], y_b[i], y_c[i] = y[i], y[j], y[k]
+
+    #         # Count the violent case when true label appears in cl label
+    #         if (y[i] == ytrue[j] or y[i] == ytrue[k] or y[j] == ytrue[i] or y[j] == ytrue[k] or y[k] == ytrue[i] or y[k] == ytrue[j]):
+    #             count_error += 1
+
+    # lambda_1 = sum(lambda_1) / len(lambda_1)
+    # lambda_2 = sum(lambda_2) / len(lambda_2)
+    # lambda_3 = sum(lambda_3) / len(lambda_3)
+
+    # return mixed_x, y_a, y_b, y_c, lambda_1, lambda_2, lambda_3, count_error
 
 def aug_intra_class_four_images(x, y, ytrue, k_cluster_label, device, dataset_name, alpha=1.0):
     '''Returns mixed inputs, pairs of targets, and lambda'''
