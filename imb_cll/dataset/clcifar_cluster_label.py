@@ -2,7 +2,6 @@ from PIL import Image
 import os
 import os.path
 import numpy as np
-from scipy import sparse
 import pickle
 import torch
 import torch.nn as nn
@@ -176,6 +175,7 @@ class CLCIFAR10(VisionDataset, BaseDataset):
         pretrain=None,
         seed=1126,
         input_dataset=None,
+        transition_bias=1.0
     ):
         self.root = root
         self.data_type = data_type
@@ -186,6 +186,7 @@ class CLCIFAR10(VisionDataset, BaseDataset):
         self.imb_type = imb_type
         self.imb_factor = imb_factor
         self.kmean_cluster = kmean_cluster # Number of clustering with K mean method.
+        self.transition_bias = transition_bias
 
         super(CLCIFAR10, self).__init__(
             root, train, transform, target_transform)
@@ -240,7 +241,10 @@ class CLCIFAR10(VisionDataset, BaseDataset):
                 self.data = self.data[:train_len]
                 self.targets = self.targets[:train_len]
 
-            self.gen_complementary_target()
+            if self.imb_factor == 1.0:
+                self.gen_bias_complementary_label()
+            else:
+                self.gen_complementary_target()
         
         # self.rng = np.random.default_rng(self.seed)
         # self.idx = self.rng.permutation(len(self.data))
@@ -464,6 +468,7 @@ class CLCIFAR20(CLCIFAR100):
         pretrain=None,
         seed=1126,
         input_dataset=None,
+        transition_bias=2.0
     ):
         self.data_type = data_type
         self.num_classes = 20
@@ -473,6 +478,7 @@ class CLCIFAR20(CLCIFAR100):
         self.imb_type = imb_type
         self.imb_factor = imb_factor
         self.kmean_cluster = kmean_cluster # Number of clustering with K mean method.
+        self.transition_bias = transition_bias
 
         self.train = train
         self.validate = validate
@@ -529,7 +535,10 @@ class CLCIFAR20(CLCIFAR100):
                 self.data = self.data[:train_len]
                 self.targets = self.targets[:train_len]
 
-            self.gen_complementary_target()
+            if self.imb_factor == 1.0:
+                self.gen_bias_complementary_label()
+            else:
+                self.gen_complementary_target()
         
         self.idx_train = len(self.data)
         self.mean, self.std = [0.5071, 0.4865, 0.4409], [0.2673, 0.2564, 0.2762]

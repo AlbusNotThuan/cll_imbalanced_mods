@@ -19,13 +19,49 @@ class BaseDataset:
             for i in range(len(self.targets))
         ]
 
-    #        Q = [[0 for i in range(self.num_classes)] for i in range(self.num_classes)]
-    #        for i in range(len(self.true_targets)):
-    #            Q[self.true_targets[i]][int(self.targets[i][0])] += 1
-    #        Q = torch.Tensor(Q)
-    #        V = torch.sum(Q, dim=1, keepdim=True)
-    #        Q = Q.div(V)
-    #        print(Q)
+        # T = np.array(torch.full([self.num_classes, self.num_classes], 1/(self.num_classes -1)))
+        # for i in range(self.num_classes):
+        #     T[i][i] = 0
+        
+        # for i in range(len(self.targets)):
+        #     self.ord_labels = self.targets[i]
+        #     self.targets[i] = np.random.choice(list(range(self.num_classes)), p=T[self.ord_labels])
+        
+    # Q = [[0 for i in range(self.num_classes)] for i in range(self.num_classes)]
+    # for i in range(len(self.true_targets)):
+    #     Q[self.true_targets[i]][int(self.targets[i][0])] += 1
+    # Q = torch.Tensor(Q)
+    # V = torch.sum(Q, dim=1, keepdim=True)
+    # Q = Q.div(V)
+    # print(Q)
+
+    def gen_bias_complementary_label(self):
+        cls_num = self.num_classes
+        transition_bias = 1/self.transition_bias
+        weight_max = 100
+        img_num_per_cls = []
+
+        for cls_idx in range(cls_num):
+            num = weight_max * (transition_bias**(cls_idx / (cls_num - 1.0)))
+            img_num_per_cls.append(int(num))
+
+        T_bias = img_num_per_cls.copy()
+        for i in range(cls_num - 1):
+            T_bias =  np.vstack((T_bias, img_num_per_cls))
+        for i in range(cls_num):
+            T_bias[i][i] = 0.0
+
+        # Need to add dtype=float, otherwise gets all 0 matrix
+        T_bias = np.array(T_bias, dtype=float)
+        for i in range(cls_num):
+            T_bias[i, :] = T_bias[i, :] / np.sum(T_bias[i, :])
+
+        np.random.seed(1126)
+        self.true_targets = copy.deepcopy(self.targets)
+        self.k_mean_targets = copy.deepcopy(self.targets)
+        for i in range(len(self.targets)):
+            self.ord_labels = self.targets[i]
+            self.targets[i] = np.random.choice(list(range(cls_num)), p=T_bias[self.ord_labels])
 
     def estimate_Q(self, module, model_path):
         module.load_state_dict(torch.load(model_path))
@@ -53,7 +89,7 @@ class BaseDataset:
             img_max = len(self.data) / cls_num
             # check for mnist, just take 5900 samples for maximum
             if self.input_dataset == "MNIST":
-                img_max = img_max - 100
+                img_max = 5000
         # cinic10, tiny-imagenet
         elif hasattr(self, "samples"):
             img_max = len(self.samples) / cls_num

@@ -21,6 +21,7 @@ def train_mic(args):
     model = args.model
     lr = args.lr
     seed = args.seed
+    alpha = args.alpha
     data_aug = True if args.data_aug.lower()=="true" else False
     mixup = True if args.mixup.lower()=="true" else False
     mamix_intra_class = True if args.mamix_intra_class.lower()=="true" else False
@@ -38,6 +39,7 @@ def train_mic(args):
     batch_size = args.batch_size
     n_weight = args.weighting
     imb_factor = args.imb_factor
+    transition_bias = args.transition_bias
     imb_type = args.imb_type
     best_acc1 = 0.
     mixup_noisy_error = 0
@@ -60,18 +62,18 @@ def train_mic(args):
     print("Use prepare_cluster_dataset")
     train_data = "train"
     trainset, input_dim, num_classes = prepare_cluster_dataset(input_dataset=input_dataset, data_type=train_data, kmean_cluster=k_cluster, max_train_samples=None, multi_label=False, 
-                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain)
+                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias)
     test_data = "test"
     testset, input_dim, num_classes = prepare_cluster_dataset(input_dataset=input_dataset, data_type=test_data, kmean_cluster=k_cluster, max_train_samples=None, multi_label=False, 
-                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain)
+                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias)
 
-    trainloader = DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-    testloader = DataLoader(testset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    trainloader = DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=num_workers, drop_last=True)
+    testloader = DataLoader(testset, batch_size=batch_size, shuffle=False, num_workers=num_workers, drop_last=True)
 
     if args.model == "resnet18":
-        model = get_resnet18(num_classes).to(device)
+        model = get_resnet18(num_classes, input_dataset).to(device)
     elif args.model == "m-resnet18":
-        model = get_modified_resnet18(num_classes).to(device)
+        model = get_modified_resnet18(num_classes, input_dataset).to(device)
     elif args.model == "mlp":
         model = MLP(input_dim=input_dim,hidden_dim=args.hidden_dim,num_classes=num_classes).to(device)
     elif args.model == "linear":
@@ -95,11 +97,14 @@ def train_mic(args):
             print("=> Weighting per class: {}".format(weights))
 
         weights = weights.to(device)
+        print("Alpha value for generating Lambda with Dirichlet(alpha, alpha, alpha) distribution: {}".format(alpha))
+        print("===========================================")
 
         # For confusion matrix
         all_preds = list()
         all_targets = list()
         cl_samples = list()
+        num_samples = list()
 
         # Record
         losses = AverageMeter('Loss', ':.4e')
@@ -120,28 +125,26 @@ def train_mic(args):
 
             if mixup:
                 if intra_class:
-                    _input_mix, target_a, target_b, lam, count_error = aug_intra_class(inputs, labels, true_labels, k_mean_targets, device, dataset_name)
-                    total_count_error += count_error
+                    _input_mix, targets = aug_intra_class(inputs, labels, true_labels, k_mean_targets, device, dataset_name, alpha)
+                    targets = targets.to(device)
                 elif three_images_intra_class:
-                    _input_mix, target_a, target_b, target_c, lam1, lam2, lam3, count_error = aug_intra_class_three_images(inputs, labels, true_labels, k_mean_targets, device, dataset_name)
-                    total_count_error += count_error
-                    # _input_mix, target_y, lam_y = aug_intra_class_three_images(inputs, labels, true_labels, k_mean_targets, device, dataset_name)
-                    # target_y = [lbl.to(device) for lbl in target_y]
-                    # lam_y = [lbl.to(device) for lbl in lam_y]
+                    _input_mix, targets = aug_intra_class_three_images(inputs, labels, true_labels, k_mean_targets, device, dataset_name, alpha)
+                    targets = targets.to(device)
+                    # _input_mix, target_a, target_b, target_c, lam1, lam2, lam3, count_error = aug_intra_class_three_images(inputs, labels, true_labels, k_mean_targets, device, dataset_name)
+                    # total_count_error += count_error
                 elif four_images_intra_class:
                     _input_mix, target_a, target_b, target_c, target_d, lam1, lam2, lam3, lam4, count_error = aug_intra_class_four_images(inputs, labels, true_labels, k_mean_targets, device, dataset_name)
                     total_count_error += count_error
-                elif cl_aug:
+                elif cl_aug:  # Mixup filter by true label --> Proof of Concept
                     _input_mix, target_a, target_b, lam = mixup_cl_data(inputs, labels, true_labels, device)
                 elif mamix_intra_class:
                     if len(cls_num_list) == 0:
                         img_max = img_max[0].item()
                         cls_num_list = num_img_per_class(img_max, num_classes, imb_type, imb_factor)
                     _input_mix, target_a, target_b, _, lam = mamix_intra_aug(inputs, labels, k_mean_targets, mamix_ratio, cls_num_list, device)
-                else:
+                else:  # Original Mixup without clustering and filtering
                     _input_mix, target_a, target_b, lam = mixup_data(inputs, labels)
 
-                # Move the inner tensors to the specified device
                 # Move only the inner tensors to the specified device
                 output_mix = model(_input_mix)
 
@@ -149,8 +152,10 @@ def train_mic(args):
                 prob_mix = F.softmax(output_mix, dim=1)
                 max_prob_mix, target_mix = torch.max(prob_mix, dim=1)
                 target_mix = target_mix.cpu().numpy()
+                target_orig = labels.cpu().numpy()
                 # Calculate the number of sample in each class
                 cl_samples.append(target_mix)
+                num_samples.append(target_orig)
 
                 if algo == "scl-exp":
                     output_mix = F.softmax(output_mix, dim=1)
@@ -158,31 +163,48 @@ def train_mic(args):
                     target_b = target_b.squeeze()
                     loss = (lam * (-F.nll_loss(output_mix.exp(), target_a, weights)) + (1 - lam) * (-F.nll_loss(output_mix.exp(), target_b, weights))).mean()
                 elif algo == "scl-nl":
-                    if three_images_intra_class:
-                        p = (1 - F.softmax(output_mix, dim=1) + 1e-6).log()
-                        target_a = target_a.squeeze()
-                        target_b = target_b.squeeze()
-                        target_c = target_c.squeeze()
-                        loss = (lam1 * F.nll_loss(p, target_a, weights) + lam2 * F.nll_loss(p, target_b, weights) + 
-                                lam3 * F.nll_loss(p, target_c, weights)).mean()
-                        # loss = ((sum(lam_y[i] * F.nll_loss(p[i], target_y[i], weights) for i in range(len(target_y)))) / len(target_y)).sum()
+                    if three_images_intra_class: #--For soft label----
+                        # p = (1 - F.softmax(output_mix, dim=1) + 1e-6).log()
+                        # target_a = target_a.squeeze()
+                        # target_b = target_b.squeeze()
+                        # target_c = target_c.squeeze()
+                        # loss = (lam1 * F.nll_loss(p, target_a, weights) + lam2 * F.nll_loss(p, target_b, weights) + 
+                        #         lam3 * F.nll_loss(p, target_c, weights)).mean()
                         
-                    elif four_images_intra_class:
+                        p = (1 - F.softmax(output_mix, dim=1)).clamp(1e-6,1-1e-6).log()
+                        loss = (-p * targets * weights).sum(-1).mean() 
+                    elif four_images_intra_class: #--For hard label----
                         p = (1 - F.softmax(output_mix, dim=1) + 1e-6).log()
                         target_a = target_a.squeeze()
                         target_b = target_b.squeeze()
                         target_c = target_c.squeeze()
                         target_d = target_d.squeeze()
                         loss = (lam1 * F.nll_loss(p, target_a, weights) + lam2 * F.nll_loss(p, target_b, weights) + 
-                                lam3 * F.nll_loss(p, target_c, weights) + lam4 * F.nll_loss(p, target_d, weights)).mean()
-                    else:
+                                lam3 * F.nll_loss(p, target_c, weights) + lam4 * F.nll_loss(p, target_d, weights)).mean()   
+                    elif intra_class:  #--For soft label----
+                        p = (1 - F.softmax(output_mix, dim=1)).clamp(1e-6,1-1e-6).log()
+                        loss = (-p * targets * weights).sum(-1).mean()
+                    else: #--For hard label----
                         p = (1 - F.softmax(output_mix, dim=1) + 1e-6).log()
                         target_a = target_a.squeeze()
                         target_b = target_b.squeeze()
                         loss = (lam * F.nll_loss(p, target_a, weights) + (1 - lam) * F.nll_loss(p, target_b, weights)).mean()
                 else:
                     raise NotImplementedError
-                
+            else:
+                    if algo == "scl-exp":
+                        outputs = F.softmax(outputs, dim=1)
+                        labels = labels.squeeze()
+                        loss = -F.nll_loss(outputs.exp(), labels, weights)
+                    elif algo == "scl-nl":
+                        #--------For hard label-------------
+                        p = (1 - F.softmax(outputs, dim=1) + 1e-6).log()
+                        labels = labels.squeeze()
+                        loss = F.nll_loss(p, labels, weights)
+                    else:
+                        raise NotImplementedError
+
+
             acc1, acc5 = accuracy(outputs, labels, topk=(1, 5))
             all_targets.extend(labels.cpu().numpy())
             _, pred = torch.max(outputs, 1)
@@ -234,8 +256,15 @@ def train_mic(args):
         if mixup:
             cl_samples = np.concatenate(cl_samples, axis=0)
             classes, class_counts = np.unique(cl_samples, return_counts=True)
+            print("---------------------------------------")
             print("The class number in training dataset: {}".format(classes))
+            print("Total number of complementary mixup labels in training dataset: {}".format(class_counts))
+
+            num_samples = np.concatenate(num_samples,axis=0)
+            classes, class_counts = np.unique(num_samples, return_counts=True)
+            print("---------------------------------------")
             print("Total complementary labels in training dataset: {}".format(class_counts))
+            print("---------------------------------------")
 
         acc1 = validate(model, testloader, eval_n_epoch, epoch, device)
         is_best = acc1 > best_acc1
@@ -252,7 +281,6 @@ def train_nn(args):
     data_aug = True if args.data_aug.lower()=="true" else False
     neighbor = True if args.neighbor.lower()=="true" else False
 
-    warm_epoch = args.warm_epoch
     epochs = args.n_epoch
     input_dataset = args.dataset_name
 
@@ -262,7 +290,6 @@ def train_nn(args):
     imb_factor = args.imb_factor
     imb_type = args.imb_type
     best_acc1 = 0.
-
 
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -439,7 +466,8 @@ if __name__ == "__main__":
     parser.add_argument('--mamix_ratio', type=float, default=-0.25)
     parser.add_argument('--neighbor', type=str, default='false')
     parser.add_argument('--weight', type=str, choices=weight_list, help='rank or distance')
-
+    parser.add_argument('--alpha', type=float, default=1.0)
+    parser.add_argument('--transition_bias', type=float, default=1.0)
 
     args = parser.parse_args()
     neighbor = True if args.neighbor.lower()=="true" else False
