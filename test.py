@@ -105,11 +105,11 @@
 # print(s[0][2])
 # print(s[0][3])
 
-import torch
-import numpy as np
+# import torch
+# import numpy as np
 
-num_classes = 10
-eta = 0.2
+# num_classes = 10
+# eta = 0.2
 
 # T = np.array(torch.full([num_classes, num_classes], (1-eta)/(num_classes-1)))
 # for i in range(num_classes):
@@ -120,62 +120,62 @@ eta = 0.2
 # for i in range(num_classes):
 #     T[i][i] = 0
 
+# # print(T)
+# cls_num = 20
+# img_max = 100
+# imb_factor = 1/10
+# img_num_per_cls = []
+
+# for cls_idx in range(cls_num):
+#     num = img_max * (imb_factor**(cls_idx / (cls_num - 1.0)))
+#     img_num_per_cls.append(int(num))
+
+# T_bias = img_num_per_cls.copy()
+# for i in range(cls_num - 1):
+# 	T_bias =  np.vstack((T_bias, img_num_per_cls))
+# for i in range(cls_num):
+# 	T_bias[i][i] = 0.0
+
+# # Need to add dtype=float, otherwise gets all 0 T_bias
+# T_bias = np.array(T_bias, dtype=float)
+# for i in range(cls_num):
+# 	T_bias[i, :] = T_bias[i, :] / np.sum(T_bias[i, :])
+
+# print(img_num_per_cls)	
+# print(T_bias)
+
+# ord_label_1 = np.array([2500, 2500, 2500, 2500, 2500, 2500, 2500, 2500, 2500, 2500, 2500, 2500, 2500, 2500, 2500, 2500, 2500, 2500, 2500, 2500])
+
+# comp_label_1 = ord_label_1 @ T_bias
+# print(comp_label_1)
+
+# print("-------------------------------")
+# print(sum(comp_label_1))
+
+# import pdb
+# pdb.set_trace()
+
+
+# # T = torch.full([num_classes, num_classes], 1/(num_classes-1))
+# # for i in range(num_classes):
+# # 	T[i][i] = 0
+
+# # print(T)
+
+
+# ord_label_2 = np.array([5000, 2997, 1796, 1077, 645, 387, 232, 139, 83, 50])
+
+# T = np.full([10, 10], 1/9)
+# for i in range(10):
+#     T[i][i] = 0
+
 # print(T)
-cls_num = 20
-img_max = 100
-imb_factor = 1/10
-img_num_per_cls = []
 
-for cls_idx in range(cls_num):
-    num = img_max * (imb_factor**(cls_idx / (cls_num - 1.0)))
-    img_num_per_cls.append(int(num))
+# comp_label_2 = ord_label_2 @ T
+# print(comp_label_2)
 
-T_bias = img_num_per_cls.copy()
-for i in range(cls_num - 1):
-	T_bias =  np.vstack((T_bias, img_num_per_cls))
-for i in range(cls_num):
-	T_bias[i][i] = 0.0
-
-# Need to add dtype=float, otherwise gets all 0 T_bias
-T_bias = np.array(T_bias, dtype=float)
-for i in range(cls_num):
-	T_bias[i, :] = T_bias[i, :] / np.sum(T_bias[i, :])
-
-print(img_num_per_cls)	
-print(T_bias)
-
-ord_label_1 = np.array([2500, 2500, 2500, 2500, 2500, 2500, 2500, 2500, 2500, 2500, 2500, 2500, 2500, 2500, 2500, 2500, 2500, 2500, 2500, 2500])
-
-comp_label_1 = ord_label_1 @ T_bias
-print(comp_label_1)
-
-print("-------------------------------")
-print(sum(comp_label_1))
-
-import pdb
-pdb.set_trace()
-
-
-# T = torch.full([num_classes, num_classes], 1/(num_classes-1))
-# for i in range(num_classes):
-# 	T[i][i] = 0
-
-# print(T)
-
-
-ord_label_2 = np.array([5000, 2997, 1796, 1077, 645, 387, 232, 139, 83, 50])
-
-T = np.full([10, 10], 1/9)
-for i in range(10):
-    T[i][i] = 0
-
-print(T)
-
-comp_label_2 = ord_label_2 @ T
-print(comp_label_2)
-
-print("-------------------------------")
-print(sum(comp_label_2))
+# print("-------------------------------")
+# print(sum(comp_label_2))
 
 #-----------------------------------------------------------
 # [[0.         0.26923077 0.19230769 0.15384615 0.11538462 0.07692308 0.07692308 0.03846154 0.03846154 0.03846154]
@@ -188,3 +188,37 @@ print(sum(comp_label_2))
 #  [0.28571429 0.2        0.14285714 0.11428571 0.08571429 0.05714286 0.05714286 0.         0.02857143 0.02857143]
 #  [0.28571429 0.2        0.14285714 0.11428571 0.08571429 0.05714286 0.05714286 0.02857143 0.         0.02857143]
 #  [0.28571429 0.2        0.14285714 0.11428571 0.08571429 0.05714286 0.05714286 0.02857143 0.02857143 0.        ]]
+
+
+# import torch
+
+# # Assuming you have a tensor representing the vector
+# x = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0])
+
+# # Calculate the mean of the vector
+# mean_x = torch.tensor([1.7, 2.2, 1.7, 1.5, 3.1])
+
+# N = 2
+
+# variance_mic = torch.mean(torch.pow(x - mean_x, 2))
+
+# import pdb
+# pdb.set_trace()
+
+# # Calculate the variance of the vector
+# variance_x = torch.mean((x - mean_x) ** 2)
+
+# print("Variance:", variance_x.item())
+
+# import torch
+
+# # Assuming you have mini-batch stochastic gradient and true gradient tensors
+# # For example, let's create random tensors for illustration
+# batch_size = 64
+# sg = torch.randn((batch_size,))  # Mini-batch stochastic gradient
+# true_gradient = torch.randn((batch_size,))  # True gradient
+
+# # Calculate MSE
+# mse = torch.mean((sg - true_gradient)**2)
+
+# print("Mean Squared Error:", mse.item())

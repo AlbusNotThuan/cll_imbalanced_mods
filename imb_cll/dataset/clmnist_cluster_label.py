@@ -103,19 +103,20 @@ class CLMNIST(VisionDataset, BaseDataset):
         pretrain=None,
         seed=1126,
         input_dataset=None,
-        transition_bias=1.0
+        transition_bias=1.0,
+        setup_type=None
     ):
         self.root = root
         self.data_type = data_type
         self.num_classes = 10
         self.input_dim = 1 * 28 * 28
         self.multi_label = multi_label
-        self.multi_label = multi_label
         self.input_dataset = input_dataset
         self.imb_type = imb_type
         self.imb_factor = imb_factor
         self.kmean_cluster = kmean_cluster # Number of clustering with K mean method.
         self.transition_bias = transition_bias
+        self.setup_type = setup_type
         # self.mean, self.std = 0.1307, 0.3081
         
         super(CLMNIST, self).__init__(
@@ -165,10 +166,10 @@ class CLMNIST(VisionDataset, BaseDataset):
                 self.data = self.data[:train_len]
                 self.targets = self.targets[:train_len]
 
-            if self.imb_factor == 1.0:
-                self.gen_bias_complementary_label()
-            else:
+            if self.setup_type == "setup 1":
                 self.gen_complementary_target()
+            elif self.setup_type == "setup 2":
+                self.gen_bias_complementary_label()
 
         self.idx_train = len(self.data)
         if self.data_type == 'train' and not validate:
@@ -230,13 +231,13 @@ class CLMNIST(VisionDataset, BaseDataset):
         """
         if self.data_type == 'train':
             if self.imb_type is not None:
-                img, target, true_target, k_mean_target = self.data[index], self.targets[index], self.true_targets[index], self.k_mean_targets[index]
+                img, targets, true_targets, k_mean_target = self.data[index], self.targets[index], self.true_targets[index], self.k_mean_targets[index]
                 img = Image.fromarray(img, mode='L')
             else:
-                img, target, true_target, k_mean_target = self.data[index], self.targets[index], self.true_targets[index], self.k_mean_targets[index]
+                img, targets, true_targets, k_mean_target = self.data[index], self.targets[index], self.true_targets[index], self.k_mean_targets[index]
                 img = Image.fromarray(img.numpy(), mode='L')
         if self.data_type == 'test':
-            img, target = self.data[index], int(self.targets[index])
+            img, targets = self.data[index], int(self.targets[index])
             img = Image.fromarray(img.numpy(), mode='L')
         # doing this so that it is consistent with all other datasets
         # to return a PIL Image
@@ -246,12 +247,12 @@ class CLMNIST(VisionDataset, BaseDataset):
             img = self.transform(img)
 
         if self.target_transform is not None:
-            target = self.target_transform(target)
+            targets = self.target_transform(targets)
 
         if self.data_type == 'train':
-            return img, target, true_target, k_mean_target, self.img_max
+            return img, targets, true_targets, k_mean_target, self.img_max
         else:
-            return img, target
+            return img, targets
 
     def __len__(self) -> int:
         return len(self.data)
