@@ -175,7 +175,8 @@ class CLCIFAR10(VisionDataset, BaseDataset):
         pretrain=None,
         seed=1126,
         input_dataset=None,
-        transition_bias=1.0
+        transition_bias=1.0,
+        setup_type=None
     ):
         self.root = root
         self.data_type = data_type
@@ -187,6 +188,7 @@ class CLCIFAR10(VisionDataset, BaseDataset):
         self.imb_factor = imb_factor
         self.kmean_cluster = kmean_cluster # Number of clustering with K mean method.
         self.transition_bias = transition_bias
+        self.setup_type = setup_type
 
         super(CLCIFAR10, self).__init__(
             root, train, transform, target_transform)
@@ -240,11 +242,16 @@ class CLCIFAR10(VisionDataset, BaseDataset):
                 train_len = min(len(self.data), max_train_samples)
                 self.data = self.data[:train_len]
                 self.targets = self.targets[:train_len]
-
-            if self.imb_factor == 1.0:
-                self.gen_bias_complementary_label()
-            else:
+            
+            if self.setup_type == "setup 1":
                 self.gen_complementary_target()
+            elif self.setup_type == "setup 2":
+                self.gen_bias_complementary_label()
+
+            # if self.setup_type == "transition_bias":
+            #     self.gen_bias_complementary_label()
+            # elif self.setup_type == "ordinary_imb":
+            #     self.gen_complementary_target()
         
         # self.rng = np.random.default_rng(self.seed)
         # self.idx = self.rng.permutation(len(self.data))
@@ -309,10 +316,10 @@ class CLCIFAR10(VisionDataset, BaseDataset):
             tuple: (image, target) where target is index of the target class.
         """
         if self.data_type == "train":
-            img, target, true_target, k_mean_target = self.data[index], self.targets[index], self.true_targets[index], self.k_mean_targets[index]
+            img, targets, true_targets, k_mean_targets = self.data[index], self.targets[index], self.true_targets[index], self.k_mean_targets[index]
 
         if self.data_type == "test":
-            img, target = self.data[index], self.targets[index]
+            img, targets = self.data[index], self.targets[index]
 
         # doing this so that it is consistent with all other datasets
         # to return a PIL Image
@@ -322,12 +329,12 @@ class CLCIFAR10(VisionDataset, BaseDataset):
             img = self.transform(img)
 
         if self.target_transform is not None:
-            target = self.target_transform(target)
+            targets = self.target_transform(targets)
 
         if self.data_type == "train":
-            return img, target, true_target, k_mean_target, self.img_max
+            return img, targets, true_targets, k_mean_targets, self.img_max
         else:
-            return img, target
+            return img, targets
     
     def __len__(self):
         if self.data_type == "train":
@@ -468,7 +475,8 @@ class CLCIFAR20(CLCIFAR100):
         pretrain=None,
         seed=1126,
         input_dataset=None,
-        transition_bias=2.0
+        transition_bias=1.0,
+        setup_type=None
     ):
         self.data_type = data_type
         self.num_classes = 20
@@ -479,6 +487,7 @@ class CLCIFAR20(CLCIFAR100):
         self.imb_factor = imb_factor
         self.kmean_cluster = kmean_cluster # Number of clustering with K mean method.
         self.transition_bias = transition_bias
+        self.setup_type = setup_type
 
         self.train = train
         self.validate = validate
@@ -535,10 +544,10 @@ class CLCIFAR20(CLCIFAR100):
                 self.data = self.data[:train_len]
                 self.targets = self.targets[:train_len]
 
-            if self.imb_factor == 1.0:
-                self.gen_bias_complementary_label()
-            else:
+            if self.setup_type == "setup 1":
                 self.gen_complementary_target()
+            elif self.setup_type == "setup 2":
+                self.gen_bias_complementary_label()
         
         self.idx_train = len(self.data)
         self.mean, self.std = [0.5071, 0.4865, 0.4409], [0.2673, 0.2564, 0.2762]

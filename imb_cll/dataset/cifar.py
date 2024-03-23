@@ -17,10 +17,10 @@ import copy
 from utils import _cifar100_to_cifar20
 from tqdm.auto import tqdm
 
-# def get_kNN(X, k):
-#     neigh = NearestNeighbors(n_neighbors=k).fit(X)
-#     Dist, Idx = neigh.kneighbors(X)
-#     return Dist, Idx, neigh
+def get_kNN(X, k):
+    neigh = NearestNeighbors(n_neighbors=k).fit(X)
+    Dist, Idx = neigh.kneighbors(X)
+    return Dist, Idx, neigh
 
 class CLCIFAR10(VisionDataset):
     """`CIFAR10 <https://www.cs.toronto.edu/~kriz/cifar.html>`_ Dataset.

@@ -6,9 +6,9 @@ import torch.nn.functional as F
 import argparse
 from torch.utils.data import DataLoader
 from imb_cll.dataset.dataset import prepare_cluster_dataset, prepare_neighbour_dataset
-from imb_cll.utils.utils import AverageMeter, validate, compute_metrics_and_record, weighting_calculation, num_img_per_class, adjust_learning_rate
+from imb_cll.utils.utils import AverageMeter, validate, compute_metrics_and_record, weighting_calculation, num_img_per_class, adjust_learning_rate, get_dataset_T
 from imb_cll.utils.metrics import accuracy
-from imb_cll.utils.cl_augmentation import mixup_cl_data, mixup_data, aug_intra_class, mamix_intra_aug, aug_intra_class_three_images, aug_intra_class_four_images
+from imb_cll.utils.cl_augmentation import mixup_cl_data, mixup_data, aug_intra_class, mamix_intra_aug, aug_intra_class_three_images, aug_intra_class_four_images, intra_class_count_error, mixup_cl_data_count_error
 from imb_cll.models.models import get_modified_resnet18, get_resnet18
 from imb_cll.models.basemodels import Linear, MLP
 
@@ -40,6 +40,7 @@ def train_mic(args):
     n_weight = args.weighting
     imb_factor = args.imb_factor
     transition_bias = args.transition_bias
+    setup_type = args.setup_type
     imb_type = args.imb_type
     best_acc1 = 0.
     mixup_noisy_error = 0
@@ -62,10 +63,33 @@ def train_mic(args):
     print("Use prepare_cluster_dataset")
     train_data = "train"
     trainset, input_dim, num_classes = prepare_cluster_dataset(input_dataset=input_dataset, data_type=train_data, kmean_cluster=k_cluster, max_train_samples=None, multi_label=False, 
-                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias)
+                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, setup_type=setup_type)
     test_data = "test"
     testset, input_dim, num_classes = prepare_cluster_dataset(input_dataset=input_dataset, data_type=test_data, kmean_cluster=k_cluster, max_train_samples=None, multi_label=False, 
-                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias)
+                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, setup_type=setup_type)
+    
+
+    # Set Q for forward algorithm
+    if algo in ["fwd-u", "ure-ga-u"]:
+        Q = torch.full([num_classes, num_classes], 1/(num_classes-1), device=device)
+        for i in range(num_classes):
+            Q[i][i] = 0
+    elif algo in ["fwd-r", "ure-ga-r"]:
+        # Print the complementary label distribution T
+        dataset_T = get_dataset_T(trainset, num_classes)
+        dataset_T = torch.tensor(dataset_T, dtype=torch.float).to(device)
+        Q = dataset_T
+    elif algo == "fwd-int":
+        # Print the complementary label distribution T
+        dataset_T = get_dataset_T(trainset, num_classes)
+        dataset_T = torch.tensor(dataset_T, dtype=torch.float).to(device)
+        U = np.full([num_classes, num_classes], 1/(num_classes-1))
+        for i in range(num_classes):
+            U[i][i] = 0
+        alpha_Q = 0.0
+        dataset_T = get_dataset_T(trainset, num_classes)
+        Q = torch.tensor(alpha_Q * U + (1-alpha_Q) * dataset_T).to(device).float()
+        dataset_T = torch.tensor(dataset_T, dtype=torch.float).to(device)
 
     trainloader = DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=num_workers, drop_last=True)
     testloader = DataLoader(testset, batch_size=batch_size, shuffle=False, num_workers=num_workers, drop_last=True)
@@ -125,17 +149,20 @@ def train_mic(args):
 
             if mixup:
                 if intra_class:
-                    _input_mix, targets = aug_intra_class(inputs, labels, true_labels, k_mean_targets, device, dataset_name, alpha)
+                    #----MIXUP INTRA CLASS----
+                    _input_mix, targets = aug_intra_class(inputs, labels, true_labels, k_mean_targets, device, dataset_name, alpha) # Mixup Intra Class
                     targets = targets.to(device)
+                    #----MIXUP FILTER INTRA CLASS----
+                    # _input_mix, targets = aug_intra_class(inputs, labels, k_mean_targets, true_labels, device, dataset_name, alpha) #Mixup Filter Intra Class
+                    # targets = targets.to(device)
                 elif three_images_intra_class:
                     _input_mix, targets = aug_intra_class_three_images(inputs, labels, true_labels, k_mean_targets, device, dataset_name, alpha)
                     targets = targets.to(device)
-                    # _input_mix, target_a, target_b, target_c, lam1, lam2, lam3, count_error = aug_intra_class_three_images(inputs, labels, true_labels, k_mean_targets, device, dataset_name)
-                    # total_count_error += count_error
                 elif four_images_intra_class:
                     _input_mix, target_a, target_b, target_c, target_d, lam1, lam2, lam3, lam4, count_error = aug_intra_class_four_images(inputs, labels, true_labels, k_mean_targets, device, dataset_name)
                     total_count_error += count_error
                 elif cl_aug:  # Mixup filter by true label --> Proof of Concept
+                    #----MIXUP FILTER EXTRA CLASS----
                     _input_mix, target_a, target_b, lam = mixup_cl_data(inputs, labels, true_labels, device)
                 elif mamix_intra_class:
                     if len(cls_num_list) == 0:
@@ -143,7 +170,14 @@ def train_mic(args):
                         cls_num_list = num_img_per_class(img_max, num_classes, imb_type, imb_factor)
                     _input_mix, target_a, target_b, _, lam = mamix_intra_aug(inputs, labels, k_mean_targets, mamix_ratio, cls_num_list, device)
                 else:  # Original Mixup without clustering and filtering
-                    _input_mix, target_a, target_b, lam = mixup_data(inputs, labels)
+                    #----MIXUP ORIGINAL
+                    # _input_mix, target_a, target_b, lam = mixup_data(inputs, labels)
+                    #----MIXUP ORIGINAL COUNT ERROR----
+                    # _input_mix, target_a, target_b, lam, count_error = mixup_cl_data_count_error(inputs, labels, true_labels, device)
+                    # total_count_error += count_error
+                    #----MIXUP INTRA CLASS COUNT ERROR----
+                    _input_mix, target_a, target_b, lam, count_error = intra_class_count_error(inputs, labels, true_labels, k_mean_targets, device, dataset_name)
+                    total_count_error += count_error
 
                 # Move only the inner tensors to the specified device
                 output_mix = model(_input_mix)
@@ -164,13 +198,6 @@ def train_mic(args):
                     loss = (lam * (-F.nll_loss(output_mix.exp(), target_a, weights)) + (1 - lam) * (-F.nll_loss(output_mix.exp(), target_b, weights))).mean()
                 elif algo == "scl-nl":
                     if three_images_intra_class: #--For soft label----
-                        # p = (1 - F.softmax(output_mix, dim=1) + 1e-6).log()
-                        # target_a = target_a.squeeze()
-                        # target_b = target_b.squeeze()
-                        # target_c = target_c.squeeze()
-                        # loss = (lam1 * F.nll_loss(p, target_a, weights) + lam2 * F.nll_loss(p, target_b, weights) + 
-                        #         lam3 * F.nll_loss(p, target_c, weights)).mean()
-                        
                         p = (1 - F.softmax(output_mix, dim=1)).clamp(1e-6,1-1e-6).log()
                         loss = (-p * targets * weights).sum(-1).mean() 
                     elif four_images_intra_class: #--For hard label----
@@ -188,22 +215,37 @@ def train_mic(args):
                         p = (1 - F.softmax(output_mix, dim=1) + 1e-6).log()
                         target_a = target_a.squeeze()
                         target_b = target_b.squeeze()
-                        loss = (lam * F.nll_loss(p, target_a, weights) + (1 - lam) * F.nll_loss(p, target_b, weights)).mean()
+                        loss = (lam * F.nll_loss(p, target_a, weights) + (1 - lam) * F.nll_loss(p, target_b, weights)).mean() #Soft-Label
+                        # loss = (F.nll_loss(p, target_a, weights) + F.nll_loss(p, target_b, weights)).mean()  # Hard-label
+                elif algo[:3] == "fwd":
+                    if intra_class or three_images_intra_class: #--For soft label----
+                        q = torch.mm(F.softmax(output_mix, dim=1), Q).clamp(1e-8,1-1e-8)
+                        loss = (-q.log() * targets).sum(-1).mean()
+                    else: #--For hard label----
+                        q = torch.mm(F.softmax(output_mix, dim=1), Q).clamp(1e-8,1-1e-8)
+                        target_a = target_a.squeeze()
+                        target_b = target_b.squeeze()
+                        loss = (lam * F.nll_loss(q.log(), target_a) + (1 -lam) * F.nll_loss(q.log(), target_a)).mean()
                 else:
                     raise NotImplementedError
             else:
-                    if algo == "scl-exp":
-                        outputs = F.softmax(outputs, dim=1)
-                        labels = labels.squeeze()
-                        loss = -F.nll_loss(outputs.exp(), labels, weights)
-                    elif algo == "scl-nl":
-                        #--------For hard label-------------
-                        p = (1 - F.softmax(outputs, dim=1) + 1e-6).log()
-                        labels = labels.squeeze()
-                        loss = F.nll_loss(p, labels, weights)
-                    else:
-                        raise NotImplementedError
-
+                if algo == "scl-exp": 
+                    outputs = F.softmax(outputs, dim=1)
+                    labels = labels.squeeze()
+                    labels = labels.long()
+                    loss = -F.nll_loss(outputs.exp(), labels, weights)
+                elif algo == "scl-nl":
+                    #--------For hard label-------------
+                    p = (1 - F.softmax(outputs, dim=1) + 1e-6).log()
+                    labels = labels.squeeze()
+                    labels = labels.long()
+                    loss = F.nll_loss(p, labels, weights)
+                elif algo[:3] == "fwd":
+                    q = torch.mm(F.softmax(outputs, dim=1), Q).clamp(1e-8,1-1e-8)
+                    labels = labels.long()
+                    loss = F.nll_loss(q.log(), labels.squeeze())
+                else:
+                    raise NotImplementedError
 
             acc1, acc5 = accuracy(outputs, labels, topk=(1, 5))
             all_targets.extend(labels.cpu().numpy())
@@ -249,6 +291,9 @@ def train_mic(args):
             mixup_noisy_error = round((total_count_error/len(trainset))*100, 2)
             print("The number of mixup noise in 1 epoch: {}%".format(mixup_noisy_error))
         elif four_images_intra_class:
+            mixup_noisy_error = round((total_count_error/len(trainset))*100, 2)
+            print("The number of mixup noise in 1 epoch: {}%".format(mixup_noisy_error))
+        else:
             mixup_noisy_error = round((total_count_error/len(trainset))*100, 2)
             print("The number of mixup noise in 1 epoch: {}%".format(mixup_noisy_error))
 
@@ -416,6 +461,8 @@ if __name__ == "__main__":
     dataset_list = [
         "CIFAR10",
         "CIFAR20",
+        "PCLCIFAR10",
+        "PCLCIFAR20",
         "KMNIST",
         "MNIST",
         "FashionMNIST"
@@ -423,7 +470,12 @@ if __name__ == "__main__":
 
     algo_list = [
         "scl-exp",
-        "scl-nl"
+        "scl-nl",
+        "ure-ga-u",
+        "ure-ga-r",
+        "fwd-int",
+        "fwd-u",
+        "fwd-r"
     ]
 
     model_list = [
@@ -436,6 +488,11 @@ if __name__ == "__main__":
     weight_list = [
         "rank",
         "distance"
+    ]
+
+    setup_list = [
+        "setup 1",
+        "setup 2"
     ]
 
     parser = argparse.ArgumentParser()
@@ -468,6 +525,7 @@ if __name__ == "__main__":
     parser.add_argument('--weight', type=str, choices=weight_list, help='rank or distance')
     parser.add_argument('--alpha', type=float, default=1.0)
     parser.add_argument('--transition_bias', type=float, default=1.0)
+    parser.add_argument('--setup_type', type=str, choices=setup_list, help='problem setup', default='setup 1')
 
     args = parser.parse_args()
     neighbor = True if args.neighbor.lower()=="true" else False
