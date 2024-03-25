@@ -69,28 +69,28 @@ def train_mic(args):
                                     augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, setup_type=setup_type)
     
 
+    dataset_T, class_count = get_dataset_T(trainset, num_classes)
     # Set Q for forward algorithm
     if algo in ["fwd-u", "ure-ga-u"]:
         Q = torch.full([num_classes, num_classes], 1/(num_classes-1), device=device)
         for i in range(num_classes):
             Q[i][i] = 0
-    elif algo in ["fwd-r", "ure-ga-r"]:
+    elif algo in ["fwd-r", "ure-ga"]:
         # Print the complementary label distribution T
-        dataset_T = get_dataset_T(trainset, num_classes)
         dataset_T = torch.tensor(dataset_T, dtype=torch.float).to(device)
         Q = dataset_T
     elif algo == "fwd-int":
         # Print the complementary label distribution T
-        dataset_T = get_dataset_T(trainset, num_classes)
         dataset_T = torch.tensor(dataset_T, dtype=torch.float).to(device)
         U = np.full([num_classes, num_classes], 1/(num_classes-1))
         for i in range(num_classes):
             U[i][i] = 0
         alpha_Q = 0.0
-        dataset_T = get_dataset_T(trainset, num_classes)
+        dataset_T, class_count = get_dataset_T(trainset, num_classes)
         Q = torch.tensor(alpha_Q * U + (1-alpha_Q) * dataset_T).to(device).float()
         dataset_T = torch.tensor(dataset_T, dtype=torch.float).to(device)
 
+    class_count = torch.tensor(class_count, dtype=torch.float).to(device)
     trainloader = DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=num_workers, drop_last=True)
     testloader = DataLoader(testset, batch_size=batch_size, shuffle=False, num_workers=num_workers, drop_last=True)
 
@@ -173,11 +173,13 @@ def train_mic(args):
                     #----MIXUP ORIGINAL
                     # _input_mix, target_a, target_b, lam = mixup_data(inputs, labels)
                     #----MIXUP ORIGINAL COUNT ERROR----
-                    # _input_mix, target_a, target_b, lam, count_error = mixup_cl_data_count_error(inputs, labels, true_labels, device)
-                    # total_count_error += count_error
-                    #----MIXUP INTRA CLASS COUNT ERROR----
-                    _input_mix, target_a, target_b, lam, count_error = intra_class_count_error(inputs, labels, true_labels, k_mean_targets, device, dataset_name)
+                    _input_mix, target_a, target_b, lam, count_error = mixup_cl_data_count_error(inputs, labels, true_labels, device)
+                    target_a, target_b = target_a.type(torch.LongTensor),  target_b.type(torch.LongTensor)  # casting to long
+                    target_a, target_b = target_a.to(device), target_b.to(device)
                     total_count_error += count_error
+                    #----MIXUP INTRA CLASS COUNT ERROR----
+                    # _input_mix, target_a, target_b, lam, count_error = intra_class_count_error(inputs, labels, true_labels, k_mean_targets, device, dataset_name)
+                    # total_count_error += count_error
 
                 # Move only the inner tensors to the specified device
                 output_mix = model(_input_mix)
@@ -191,13 +193,26 @@ def train_mic(args):
                 cl_samples.append(target_mix)
                 num_samples.append(target_orig)
 
-                if algo == "scl-exp":
-                    output_mix = F.softmax(output_mix, dim=1)
-                    target_a = target_a.squeeze()
-                    target_b = target_b.squeeze()
-                    loss = (lam * (-F.nll_loss(output_mix.exp(), target_a, weights)) + (1 - lam) * (-F.nll_loss(output_mix.exp(), target_b, weights))).mean()
+                if algo == "scl-lin":
+                    if intra_class or three_images_intra_class: #--For soft label----
+                        p = -F.softmax(output_mix, dim=1)
+                        loss = (-p * targets * weights).sum(-1).mean()
+                    else: #--For hard label----
+                        p = -F.softmax(output_mix, dim=1)
+                        target_a = target_a.squeeze()
+                        target_b = target_b.squeeze()
+                        loss = (lam * (F.nll_loss(p, target_a, weights)) + (1 - lam) * (F.nll_loss(p, target_b, weights))).mean() #Soft-Label
+                elif algo == "scl-exp":
+                    if intra_class or three_images_intra_class: #--For soft label----
+                        p = -torch.exp(F.softmax(output_mix, dim=1))
+                        loss = (-p * targets * weights).sum(-1).mean()
+                    else: #--For hard label----
+                        p = -torch.exp(F.softmax(output_mix, dim=1))
+                        target_a = target_a.squeeze()
+                        target_b = target_b.squeeze()
+                        loss = (lam * (F.nll_loss(p, target_a, weights)) + (1 - lam) * (F.nll_loss(p, target_b, weights))).mean() #Soft-Label
                 elif algo == "scl-nl":
-                    if three_images_intra_class: #--For soft label----
+                    if intra_class or three_images_intra_class: #--For soft label----
                         p = (1 - F.softmax(output_mix, dim=1)).clamp(1e-6,1-1e-6).log()
                         loss = (-p * targets * weights).sum(-1).mean() 
                     elif four_images_intra_class: #--For hard label----
@@ -207,10 +222,7 @@ def train_mic(args):
                         target_c = target_c.squeeze()
                         target_d = target_d.squeeze()
                         loss = (lam1 * F.nll_loss(p, target_a, weights) + lam2 * F.nll_loss(p, target_b, weights) + 
-                                lam3 * F.nll_loss(p, target_c, weights) + lam4 * F.nll_loss(p, target_d, weights)).mean()   
-                    elif intra_class:  #--For soft label----
-                        p = (1 - F.softmax(output_mix, dim=1)).clamp(1e-6,1-1e-6).log()
-                        loss = (-p * targets * weights).sum(-1).mean()
+                                lam3 * F.nll_loss(p, target_c, weights) + lam4 * F.nll_loss(p, target_d, weights)).mean()
                     else: #--For hard label----
                         p = (1 - F.softmax(output_mix, dim=1) + 1e-6).log()
                         target_a = target_a.squeeze()
@@ -226,14 +238,53 @@ def train_mic(args):
                         target_a = target_a.squeeze()
                         target_b = target_b.squeeze()
                         loss = (lam * F.nll_loss(q.log(), target_a) + (1 -lam) * F.nll_loss(q.log(), target_a)).mean()
+                elif algo == "lw":
+                    if intra_class or three_images_intra_class: #--For soft label----
+                        p = 1-F.softmax(output_mix, dim=1)
+                        Q_1 = F.log_softmax(p, dim=1)
+                        w_1 = torch.mul(p / (num_classes-1), Q_1)
+                        loss = (-Q_1 * targets * weights).sum(-1).mean() + (-w_1 * targets * weights).sum(-1).mean()
+                    else: #-----For hard label-----
+                        p = 1 - F.softmax(output_mix, dim=1)
+                        q = F.softmax(p, dim=1) + 1e-6
+                        w = torch.mul(p / (output_mix.shape[1] - 1), q.log())
+                        loss = (lam * (F.nll_loss(q.log(), target_a.long(), weights) + F.nll_loss(w, target_a.long(), weights)) + (1 - lam) * (F.nll_loss(q.log(), target_b.long(), weights) + F.nll_loss(w, target_b.long(), weights)))
+                elif algo == "ure-ga":
+                    if intra_class or three_images_intra_class: #--For soft label----
+                        logprob = F.log_softmax(output_mix, dim=1)
+                        l = (-logprob * targets)
+
+                        labels_count = targets.sum(0)
+                        l_sum = l.sum(0)
+
+                        loss = torch.zeros_like(l_sum)
+                        idx = labels_count > 0
+                        loss[idx] = -(num_classes-1) * l_sum[idx] / labels_count[idx] * class_count[idx]
+                        for j in range(num_classes):
+                            if labels_count[j] > 0:
+                                loss += (-logprob * targets[:,j].unsqueeze(1)).sum(0) / labels_count[j] * class_count[j]
+
+                        if torch.min(loss) > 0:
+                            loss = loss.sum()
+                        else:
+                            beta_vec = torch.zeros(num_classes, requires_grad=True).to(device)
+                            loss = torch.minimum(beta_vec, loss).sum() * -1
+                    # else: #-----For hard label-----
+                    #     logprob = F.log_softmax(output_mix, dim=1)
                 else:
                     raise NotImplementedError
             else:
                 if algo == "scl-exp": 
-                    outputs = F.softmax(outputs, dim=1)
+                    p = -torch.exp(F.softmax(outputs, dim=1))
                     labels = labels.squeeze()
                     labels = labels.long()
-                    loss = -F.nll_loss(outputs.exp(), labels, weights)
+                    loss = F.nll_loss(p, labels, weights)
+                elif algo == "scl-lin":
+                    #--------For hard label-------------
+                    p = -F.softmax(outputs, dim=1)
+                    labels = labels.squeeze()
+                    labels = labels.long()
+                    loss = F.nll_loss(p, labels, weights)
                 elif algo == "scl-nl":
                     #--------For hard label-------------
                     p = (1 - F.softmax(outputs, dim=1) + 1e-6).log()
@@ -243,7 +294,30 @@ def train_mic(args):
                 elif algo[:3] == "fwd":
                     q = torch.mm(F.softmax(outputs, dim=1), Q).clamp(1e-8,1-1e-8)
                     labels = labels.long()
-                    loss = F.nll_loss(q.log(), labels.squeeze())
+                    loss = F.nll_loss(q.log(), labels.squeeze(), weights)
+                elif algo == "lw":
+                    p = 1 - F.softmax(outputs, dim=1)
+                    q = F.softmax(p, dim=1) + 1e-6
+                    w = torch.mul(p / (outputs.shape[1] - 1), q.log())
+                    loss = F.nll_loss(q.log(), labels.long(), weights) + F.nll_loss(w, labels.long(), weights)
+                elif algo == "ure-ga":
+                    if torch.det(Q) != 0:
+                        Tinv = torch.inverse(Q)
+                    else:
+                        Tinv = torch.pinverse(Q)
+                    neglog = -F.log_softmax(outputs, dim=1)
+                    labels = labels.squeeze()
+                    l = labels.long()
+                    counts = torch.bincount(l, minlength=num_classes).view(-1, 1)
+                    lh = F.one_hot(l, num_classes).float()
+                    neg_vector = torch.matmul(lh.t(), neglog)
+                    loss_vec = (Tinv * neg_vector).sum(dim=1) * class_count
+                    vc = (1 / counts).nan_to_num(0).view(-1)
+                    loss_vec = loss_vec * vc
+                    if loss_vec.min() > 0:
+                        loss = loss_vec.sum()
+                    else:
+                        loss = F.relu(-loss_vec).sum()
                 else:
                     raise NotImplementedError
 
@@ -471,11 +545,13 @@ if __name__ == "__main__":
     algo_list = [
         "scl-exp",
         "scl-nl",
+        "scl-lin",
         "ure-ga-u",
-        "ure-ga-r",
+        "ure-ga",
         "fwd-int",
         "fwd-u",
-        "fwd-r"
+        "fwd-r",
+        "lw"
     ]
 
     model_list = [
