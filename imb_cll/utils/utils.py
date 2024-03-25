@@ -13,7 +13,7 @@ def get_dataset_T(dataset, num_classes):
         class_count[dataset.true_targets[i]] += 1
     for i in range(num_classes):
         dataset_T[i] /= class_count[i]
-    return dataset_T
+    return dataset_T, class_count
 
 def validate(model, dataloader, eval_n_epoch, epoch, device):
 

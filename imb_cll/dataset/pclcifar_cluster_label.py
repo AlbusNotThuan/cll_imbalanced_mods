@@ -18,112 +18,6 @@ from torchvision.datasets.utils import check_integrity, download_and_extract_arc
 from torchvision.models import resnet18
 from torchvision.transforms import Compose, ToTensor, Normalize, RandomCrop, RandomHorizontalFlip
 
-def _cifar100_to_cifar20(target):
-    # obtained from cifar_test script
-    _dict = {
-        0: 4,
-        1: 1,
-        2: 14,
-        3: 8,
-        4: 0,
-        5: 6,
-        6: 7,
-        7: 7,
-        8: 18,
-        9: 3,
-        10: 3,
-        11: 14,
-        12: 9,
-        13: 18,
-        14: 7,
-        15: 11,
-        16: 3,
-        17: 9,
-        18: 7,
-        19: 11,
-        20: 6,
-        21: 11,
-        22: 5,
-        23: 10,
-        24: 7,
-        25: 6,
-        26: 13,
-        27: 15,
-        28: 3,
-        29: 15,
-        30: 0,
-        31: 11,
-        32: 1,
-        33: 10,
-        34: 12,
-        35: 14,
-        36: 16,
-        37: 9,
-        38: 11,
-        39: 5,
-        40: 5,
-        41: 19,
-        42: 8,
-        43: 8,
-        44: 15,
-        45: 13,
-        46: 14,
-        47: 17,
-        48: 18,
-        49: 10,
-        50: 16,
-        51: 4,
-        52: 17,
-        53: 4,
-        54: 2,
-        55: 0,
-        56: 17,
-        57: 4,
-        58: 18,
-        59: 17,
-        60: 10,
-        61: 3,
-        62: 2,
-        63: 12,
-        64: 12,
-        65: 16,
-        66: 12,
-        67: 1,
-        68: 9,
-        69: 19,
-        70: 2,
-        71: 10,
-        72: 0,
-        73: 1,
-        74: 16,
-        75: 12,
-        76: 9,
-        77: 13,
-        78: 15,
-        79: 13,
-        80: 16,
-        81: 19,
-        82: 2,
-        83: 4,
-        84: 6,
-        85: 19,
-        86: 5,
-        87: 5,
-        88: 8,
-        89: 19,
-        90: 18,
-        91: 1,
-        92: 2,
-        93: 15,
-        94: 6,
-        95: 0,
-        96: 17,
-        97: 8,
-        98: 14,
-        99: 13,
-    }
-
-    return _dict[target]
 
 class PCLCIFAR10(Dataset, BaseDataset):
     """
@@ -184,23 +78,23 @@ class PCLCIFAR10(Dataset, BaseDataset):
         
         self.names = data["names"]
         self.data = data["images"]
-        self.true_targets = torch.Tensor(data["ord_labels"]).view(-1)
-        self.targets = torch.Tensor(data["cl_labels"])[:, :num_cl]
+        self.true_targets = torch.Tensor(data["ord_labels"]).view(-1).long()
+        # self.targets = torch.Tensor(data["cl_labels"])[:, num_cl].long()
+        self.targets = torch.Tensor(data["cl_labels"])[:, :num_cl].long()
+        
         # self.targets = [labels[0] for labels in data["cl_labels"]]
         self.k_mean_targets = copy.deepcopy(self.true_targets)
 
-        self.data = np.vstack(self.data).reshape(-1, 3, 32, 32)
-        self.data = self.data.transpose((0, 2, 3, 1))  # convert to HWC
+        # self.data = np.vstack(self.data).reshape(-1, 3, 32, 32)
+        # self.data = self.data.transpose((0, 2, 3, 1))  # convert to HWC
 
         if self.data_type =="train":
-            if self.imb_type is not None:
+            if self.imb_type is not None and self.imb_factor != 1:
                 print("Imbalance ratio: {}".format(self.imb_factor))
-                # self.img_num_list, self.img_max = self.get_img_num_per_cls(self.num_classes, self.imb_type, self.imb_factor)
-                # self.gen_imbalanced_data(self.img_num_list)
+                self.img_num_list, self.img_max = self.get_img_num_per_cls(self.num_classes, self.imb_type, self.imb_factor)
+                self.gen_imbalanced_data(self.img_num_list)
             
             if max_train_samples: #limit the size of the training dataset to max_train_samples
-                import pdb
-                pdb.set_trace()
                 train_len = min(len(self.data), max_train_samples)
                 self.data = self.data[:train_len]
                 self.targets = self.targets[:train_len]
@@ -394,31 +288,25 @@ class PCLCIFAR20(Dataset, BaseDataset):
         self.names = data["names"]
         self.data = data["images"]
         self.true_targets = torch.Tensor(data["ord_labels"]).view(-1)
-        self.targets = torch.Tensor(data["cl_labels"])[:, :num_cl]
+        # self.targets = torch.Tensor(data["cl_labels"])[:, :num_cl]
+        self.targets = torch.Tensor(data["cl_labels"])[:, num_cl]
         # self.targets = [labels[0] for labels in data["cl_labels"]]
         self.k_mean_targets = copy.deepcopy(self.true_targets)
 
-        self.targets = [_cifar100_to_cifar20(i) for i in self.targets]
-        self.targets = torch.Tensor(self.targets)
-
-        self.data = np.vstack(self.data).reshape(-1, 3, 32, 32)
-        self.data = self.data.transpose((0, 2, 3, 1))  # convert to HWC
+        self.data = np.array(self.data)
+        # self.data = np.vstack(self.data).reshape(-1, 3, 32, 32)
+        # self.data = self.data.transpose((0, 2, 3, 1))  # convert to HWC
 
         if self.data_type =="train":
-            if self.imb_type is not None:
+            if self.imb_type is not None and self.imb_factor != 1:
                 print("Imbalance ratio: {}".format(self.imb_factor))
-                # self.img_num_list, self.img_max = self.get_img_num_per_cls(self.num_classes, self.imb_type, self.imb_factor)
-                # self.gen_imbalanced_data(self.img_num_list)
+                self.img_num_list, self.img_max = self.get_img_num_per_cls(self.num_classes, self.imb_type, self.imb_factor)
+                self.gen_imbalanced_data(self.img_num_list)
             
             if max_train_samples: #limit the size of the training dataset to max_train_samples
                 train_len = min(len(self.data), max_train_samples)
                 self.data = self.data[:train_len]
                 self.targets = self.targets[:train_len]
-            
-            # if self.setup_type == "setup 1":
-            #     self.gen_complementary_target()
-            # elif self.setup_type == "setup 2":
-            #     self.gen_bias_complementary_label()
 
         self.transform = transform
         self.target_transform = target_transform

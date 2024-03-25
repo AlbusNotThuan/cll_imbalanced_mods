@@ -131,7 +131,7 @@ class BaseDataset:
         assert new_data.shape[0] == len(new_targets)
         self.data = new_data
         self.targets = new_targets
-
+    
     def get_cls_num_list(self):
         cls_num_list = []
         for i in range(self.cls_num):
