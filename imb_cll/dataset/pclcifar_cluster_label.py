@@ -81,7 +81,7 @@ class PCLCIFAR10(Dataset, BaseDataset):
         self.true_targets = torch.Tensor(data["ord_labels"]).view(-1).long()
         # self.targets = torch.Tensor(data["cl_labels"])[:, num_cl].long()
         self.targets = torch.Tensor(data["cl_labels"])[:, :num_cl].long()
-        
+
         # self.targets = [labels[0] for labels in data["cl_labels"]]
         self.k_mean_targets = copy.deepcopy(self.true_targets)
 
@@ -287,9 +287,11 @@ class PCLCIFAR20(Dataset, BaseDataset):
         
         self.names = data["names"]
         self.data = data["images"]
-        self.true_targets = torch.Tensor(data["ord_labels"]).view(-1)
-        # self.targets = torch.Tensor(data["cl_labels"])[:, :num_cl]
-        self.targets = torch.Tensor(data["cl_labels"])[:, num_cl]
+        self.true_targets = torch.Tensor(data["ord_labels"]).view(-1).long()
+        self.targets = torch.Tensor(data["cl_labels"])[:, :num_cl].long()
+        if self.imb_type is not None and self.imb_factor != 1:
+            self.targets = torch.Tensor(data["cl_labels"])[:, num_cl:].long()
+
         # self.targets = [labels[0] for labels in data["cl_labels"]]
         self.k_mean_targets = copy.deepcopy(self.true_targets)
 
