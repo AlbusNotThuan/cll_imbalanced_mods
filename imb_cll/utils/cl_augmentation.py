@@ -259,7 +259,7 @@ def aug_intra_class_three_images(x, y, ytrue, k_cluster_label, device, dataset_n
             
             for idx, index in enumerate(indices):
                 y_values[idx] = y[index]
-            y_values = torch.tensor(y_values)
+            y_values = torch.tensor(y_values, dtype=y.dtype)
 
             label_y[i] = recalculate_lambda_label_sharing(y_values, lam_values)
 

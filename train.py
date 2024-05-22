@@ -25,8 +25,8 @@ def train_mic(args):
     data_aug = True if args.data_aug.lower()=="true" else False
     mixup = True if args.mixup.lower()=="true" else False
     mamix_intra_class = True if args.mamix_intra_class.lower()=="true" else False
-    intra_class = True if args.intra_class.lower()=="true" else False
-    three_images_intra_class = True if args.three_images_intra_class.lower()=="true" else False
+    icm = True if args.icm.lower()=="true" else False
+    micm = True if args.micm.lower()=="true" else False
     four_images_intra_class = True if args.four_images_intra_class.lower()=="true" else False
     cl_aug = True if args.cl_aug.lower()=="true" else False
     k_cluster = args.k_cluster
@@ -53,7 +53,7 @@ def train_mic(args):
     if data_aug:
         print("Use data augmentation.")
 
-    if intra_class:
+    if icm:
         print("Use complementary mixup intra class")
     elif cl_aug:
         print("Use mixup noise-free")
@@ -148,14 +148,14 @@ def train_mic(args):
             outputs = model(inputs)
 
             if mixup:
-                if intra_class:
+                if icm:
                     #----MIXUP INTRA CLASS----
                     _input_mix, targets = aug_intra_class(inputs, labels, true_labels, k_mean_targets, device, dataset_name, alpha) # Mixup Intra Class
                     targets = targets.to(device)
                     #----MIXUP FILTER INTRA CLASS----
                     # _input_mix, targets = aug_intra_class(inputs, labels, k_mean_targets, true_labels, device, dataset_name, alpha) #Mixup Filter Intra Class
                     # targets = targets.to(device)
-                elif three_images_intra_class:
+                elif micm:
                     _input_mix, targets = aug_intra_class_three_images(inputs, labels, true_labels, k_mean_targets, device, dataset_name, alpha)
                     targets = targets.to(device)
                 elif four_images_intra_class:
@@ -194,7 +194,7 @@ def train_mic(args):
                 num_samples.append(target_orig)
 
                 if algo == "scl-lin":
-                    if intra_class or three_images_intra_class: #--For soft label----
+                    if icm or micm: #--For soft label----
                         p = -F.softmax(output_mix, dim=1)
                         loss = (-p * targets * weights).sum(-1).mean()
                     else: #--For hard label----
@@ -203,7 +203,7 @@ def train_mic(args):
                         target_b = target_b.squeeze()
                         loss = (lam * (F.nll_loss(p, target_a, weights)) + (1 - lam) * (F.nll_loss(p, target_b, weights))).mean() #Soft-Label
                 elif algo == "scl-exp":
-                    if intra_class or three_images_intra_class: #--For soft label----
+                    if icm or micm: #--For soft label----
                         p = -torch.exp(F.softmax(output_mix, dim=1))
                         loss = (-p * targets * weights).sum(-1).mean()
                     else: #--For hard label----
@@ -212,17 +212,17 @@ def train_mic(args):
                         target_b = target_b.squeeze()
                         loss = (lam * (F.nll_loss(p, target_a, weights)) + (1 - lam) * (F.nll_loss(p, target_b, weights))).mean() #Soft-Label
                 elif algo == "scl-nl":
-                    if intra_class or three_images_intra_class: #--For soft label----
+                    if icm or micm: #--For soft label----
                         p = (1 - F.softmax(output_mix, dim=1)).clamp(1e-6,1-1e-6).log()
                         loss = (-p * targets * weights).sum(-1).mean() 
-                    elif four_images_intra_class: #--For hard label----
-                        p = (1 - F.softmax(output_mix, dim=1) + 1e-6).log()
-                        target_a = target_a.squeeze()
-                        target_b = target_b.squeeze()
-                        target_c = target_c.squeeze()
-                        target_d = target_d.squeeze()
-                        loss = (lam1 * F.nll_loss(p, target_a, weights) + lam2 * F.nll_loss(p, target_b, weights) + 
-                                lam3 * F.nll_loss(p, target_c, weights) + lam4 * F.nll_loss(p, target_d, weights)).mean()
+                    # elif four_images_intra_class: #--For hard label----
+                    #     p = (1 - F.softmax(output_mix, dim=1) + 1e-6).log()
+                    #     target_a = target_a.squeeze()
+                    #     target_b = target_b.squeeze()
+                    #     target_c = target_c.squeeze()
+                    #     target_d = target_d.squeeze()
+                    #     loss = (lam1 * F.nll_loss(p, target_a, weights) + lam2 * F.nll_loss(p, target_b, weights) + 
+                    #             lam3 * F.nll_loss(p, target_c, weights) + lam4 * F.nll_loss(p, target_d, weights)).mean()
                     else: #--For hard label----
                         p = (1 - F.softmax(output_mix, dim=1) + 1e-6).log()
                         target_a = target_a.squeeze()
@@ -230,7 +230,7 @@ def train_mic(args):
                         loss = (lam * F.nll_loss(p, target_a, weights) + (1 - lam) * F.nll_loss(p, target_b, weights)).mean() #Soft-Label
                         # loss = (F.nll_loss(p, target_a, weights) + F.nll_loss(p, target_b, weights)).mean()  # Hard-label
                 elif algo[:3] == "fwd":
-                    if intra_class or three_images_intra_class: #--For soft label----
+                    if icm or micm: #--For soft label----
                         q = torch.mm(F.softmax(output_mix, dim=1), Q).clamp(1e-8,1-1e-8)
                         loss = (-q.log() * targets).sum(-1).mean()
                     else: #--For hard label----
@@ -239,7 +239,7 @@ def train_mic(args):
                         target_b = target_b.squeeze()
                         loss = (lam * F.nll_loss(q.log(), target_a) + (1 -lam) * F.nll_loss(q.log(), target_a)).mean()
                 elif algo == "lw":
-                    if intra_class or three_images_intra_class: #--For soft label----
+                    if icm or micm: #--For soft label----
                         p = 1-F.softmax(output_mix, dim=1)
                         Q_1 = F.log_softmax(p, dim=1)
                         w_1 = torch.mul(p / (num_classes-1), Q_1)
@@ -248,9 +248,11 @@ def train_mic(args):
                         p = 1 - F.softmax(output_mix, dim=1)
                         q = F.softmax(p, dim=1) + 1e-6
                         w = torch.mul(p / (output_mix.shape[1] - 1), q.log())
+                        target_a = target_a.squeeze()
+                        target_b = target_b.squeeze()
                         loss = (lam * (F.nll_loss(q.log(), target_a.long(), weights) + F.nll_loss(w, target_a.long(), weights)) + (1 - lam) * (F.nll_loss(q.log(), target_b.long(), weights) + F.nll_loss(w, target_b.long(), weights)))
                 elif algo == "ure-ga":
-                    if intra_class or three_images_intra_class: #--For soft label----
+                    if icm or micm: #--For soft label----
                         logprob = F.log_softmax(output_mix, dim=1)
                         l = (-logprob * targets)
 
@@ -267,10 +269,7 @@ def train_mic(args):
                         if torch.min(loss) > 0:
                             loss = loss.sum()
                         else:
-                            beta_vec = torch.zeros(num_classes, requires_grad=True).to(device)
-                            loss = torch.minimum(beta_vec, loss).sum() * -1
-                    # else: #-----For hard label-----
-                    #     logprob = F.log_softmax(output_mix, dim=1)
+                            loss = F.relu(-loss).sum()
                 else:
                     raise NotImplementedError
             else:
@@ -299,19 +298,21 @@ def train_mic(args):
                     p = 1 - F.softmax(outputs, dim=1)
                     q = F.softmax(p, dim=1) + 1e-6
                     w = torch.mul(p / (outputs.shape[1] - 1), q.log())
+                    labels = labels.squeeze()
                     loss = F.nll_loss(q.log(), labels.long(), weights) + F.nll_loss(w, labels.long(), weights)
                 elif algo == "ure-ga":
                     if torch.det(Q) != 0:
                         Tinv = torch.inverse(Q)
                     else:
                         Tinv = torch.pinverse(Q)
+
                     neglog = -F.log_softmax(outputs, dim=1)
                     labels = labels.squeeze()
                     l = labels.long()
                     counts = torch.bincount(l, minlength=num_classes).view(-1, 1)
                     lh = F.one_hot(l, num_classes).float()
                     neg_vector = torch.matmul(lh.t(), neglog)
-                    loss_vec = (Tinv * neg_vector).sum(dim=1) * class_count
+                    loss_vec = (Tinv.to(device) * neg_vector).sum(dim=1) * class_count
                     vc = (1 / counts).nan_to_num(0).view(-1)
                     loss_vec = loss_vec * vc
                     if loss_vec.min() > 0:
@@ -357,19 +358,16 @@ def train_mic(args):
                                 top5,
                                 flag='Training')
         
-        # Count the number of mixup noise error when mixing up
-        if intra_class:
-            mixup_noisy_error = round((total_count_error/len(trainset))*100, 2)
-            print("The number of mixup noise in 1 epoch: {}%".format(mixup_noisy_error))
-        elif three_images_intra_class:
-            mixup_noisy_error = round((total_count_error/len(trainset))*100, 2)
-            print("The number of mixup noise in 1 epoch: {}%".format(mixup_noisy_error))
-        elif four_images_intra_class:
-            mixup_noisy_error = round((total_count_error/len(trainset))*100, 2)
-            print("The number of mixup noise in 1 epoch: {}%".format(mixup_noisy_error))
-        else:
-            mixup_noisy_error = round((total_count_error/len(trainset))*100, 2)
-            print("The number of mixup noise in 1 epoch: {}%".format(mixup_noisy_error))
+        # # Count the number of mixup noise error when mixing up
+        # if icm or micm:
+        #     mixup_noisy_error = round((total_count_error/len(trainset))*100, 2)
+        #     print("The number of mixup noise in 1 epoch: {}%".format(mixup_noisy_error))
+        # elif four_images_intra_class:
+        #     mixup_noisy_error = round((total_count_error/len(trainset))*100, 2)
+        #     print("The number of mixup noise in 1 epoch: {}%".format(mixup_noisy_error))
+        # else:
+        #     mixup_noisy_error = round((total_count_error/len(trainset))*100, 2)
+        #     print("The number of mixup noise in 1 epoch: {}%".format(mixup_noisy_error))
 
         # Count the number of samples for each class
         if mixup:
@@ -590,8 +588,8 @@ if __name__ == "__main__":
     parser.add_argument('--imb_factor', type=float, default=1.0)
     parser.add_argument('--weighting', type=int, default=0)
     parser.add_argument('--mixup', type=str, default='false')
-    parser.add_argument('--intra_class', type=str, default='false')
-    parser.add_argument('--three_images_intra_class', type=str, default='false')
+    parser.add_argument('--icm', type=str, default='false')
+    parser.add_argument('--micm', type=str, default='false')
     parser.add_argument('--four_images_intra_class', type=str, default='false')
     parser.add_argument('--cl_aug', type=str, default='false')
     parser.add_argument('--mamix_intra_class', type=str, default='false')
