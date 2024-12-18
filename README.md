@@ -11,23 +11,23 @@
 ### Quick Start: ICM for CIFAR10 Training with balance scenario
 * To reproduce SCL-NL training with balance scenario, utilizing ICM method
 ```
-python train.py --algo=scl-nl --dataset_name CIFAR10 --model resnet18 --imb_type exp --imb_factor 1 --mixup true --alpha 0.2 --k_cluster 50 --icm true --data_aug true
+python train.py --algo=scl-nl --dataset_name CIFAR10 --model resnet18 --imb_type exp --imb_factor 1 --mixup true --alpha 0.2 --k_cluster 50 --new_data_aug icm --data_aug true --aug_type flipflop
 ```
 
 * To reproduce SCL-NL training with balance scenario, utilizing MICM method
 ```
-python train.py --algo=scl-nl --dataset_name CIFAR10 --model resnet18 --imb_type exp --imb_factor 1 --mixup true --alpha 0.2 --k_cluster 50 --micm true --data_aug true
+python train.py --algo=scl-nl --dataset_name CIFAR10 --model resnet18 --imb_type exp --imb_factor 1 --mixup true --alpha 0.2 --k_cluster 50 --new_data_aug micm --data_aug true --aug_type flipflop
 ```
 
 ### Quick Start: ICM for CIFAR10 Training with imbalanced scenario with Setup 1.
 * To reproduce SCL-NL training with imbalance scenario, utilizing ICM method
 ```
-python train.py --algo=scl-nl --dataset_name CIFAR10 --model resnet18 --imb_type exp --imb_factor 0.1 --mixup true --alpha 0.2 --k_cluster 50 --icm true --data_aug true --setup_type "setup 1"
+python train.py --algo=scl-nl --dataset_name CIFAR10 --model resnet18 --imb_type exp --imb_factor 0.1 --mixup true --alpha 0.2 --k_cluster 50 --new_data_aug icm --data_aug true --aug_type flipflop --setup_type "setup 1" 
 ```
 
 * To reproduce SCL-NL training with imbalance scenario, utilizing MICM method
 ```
-python train.py --algo=scl-nl --dataset_name CIFAR10 --model resnet18 --imb_type exp --imb_factor 0.1 --mixup true --alpha 0.2 --k_cluster 50 --micm true --data_aug true --setup_type "setup 1"
+python train.py --algo=scl-nl --dataset_name CIFAR10 --model resnet18 --imb_type exp --imb_factor 0.1 --mixup true --alpha 0.2 --k_cluster 50 --new_data_aug micm --data_aug true --aug_type flipflop --setup_type "setup 1"
 ```
 
 * As explanation in the paper, Setup 1: the imbalanced CLL comes from ordinary itself.
@@ -35,12 +35,12 @@ python train.py --algo=scl-nl --dataset_name CIFAR10 --model resnet18 --imb_type
 ### Quick Start: ICM for CIFAR10 Training with imbalanced scenario with Setup 2.
 * To reproduce SCL-NL training with imbalance scenario, utilizing ICM method
 ```
-python train.py --algo=scl-nl --dataset_name CIFAR10 --model resnet18 --imb_type exp --imb_factor 1 --mixup true --alpha 0.2 --k_cluster 50 --icm true --data_aug true --setup_type "setup 2" --transition_bias 10
+python train.py --algo=scl-nl --dataset_name CIFAR10 --model resnet18 --imb_type exp --imb_factor 1 --mixup true --alpha 0.2 --k_cluster 50 --new_data_aug icm --data_aug true --aug_type flipflop --setup_type "setup 2" --transition_bias 10
 ```
 
 * To reproduce SCL-NL training with balance scenario, utilizing MICM method
 ```
-python train.py --algo=scl-nl --dataset_name CIFAR10 --model resnet18 --imb_type exp --imb_factor 1 --mixup true --alpha 0.2 --k_cluster 50 --micm true --data_aug true --setup_type "setup 2" --transition_bias 10
+python train.py --algo=scl-nl --dataset_name CIFAR10 --model resnet18 --imb_type exp --imb_factor 1 --mixup true --alpha 0.2 --k_cluster 50 --new_data_aug micm --data_aug true --aug_type flipflop --setup_type "setup 2" --transition_bias 10
 ```
 
 * Setup 2: The imbalanced CLL is from biased transition matrix.
@@ -49,12 +49,12 @@ python train.py --algo=scl-nl --dataset_name CIFAR10 --model resnet18 --imb_type
 ### Quick Start: ICM for CIFAR10 Training with imbalanced scenario with Setup 3.
 * To reproduce SCL-NL training with imbalance scenario, utilizing ICM method
 ```
-python train.py --algo=scl-nl --dataset_name CIFAR10 --model resnet18 --imb_type exp --imb_factor 0.1 --mixup true --alpha 0.2 --k_cluster 50 --icm true --data_aug true --setup_type "setup 2" --transition_bias 10
+python train.py --algo=scl-nl --dataset_name CIFAR10 --model resnet18 --imb_type exp --imb_factor 0.1 --mixup true --alpha 0.2 --k_cluster 50 --new_data_aug icm --data_aug true --aug_type flipflop --setup_type "setup 2" --transition_bias 10
 ```
 
 * To reproduce SCL-NL training with balance scenario, utilizing MICM method
 ```
-python train.py --algo=scl-nl --dataset_name CIFAR10 --model resnet18 --imb_type exp --imb_factor 0.1 --mixup true --alpha 0.2 --k_cluster 50 --micm true --data_aug true --setup_type "setup 2" --transition_bias 10
+python train.py --algo=scl-nl --dataset_name CIFAR10 --model resnet18 --imb_type exp --imb_factor 0.1 --mixup true --alpha 0.2 --k_cluster 50 --new_data_aug micm --data_aug true --aug_type flipflop --setup_type "setup 2" --transition_bias 10
 ```
 
 * Setup 3: The imbalanced CLL is a combined of imbalanced ordinary dataset and biased transition matrix. Therefore, imb_factor 0.1 and setup_type "setup 2"
@@ -62,8 +62,10 @@ python train.py --algo=scl-nl --dataset_name CIFAR10 --model resnet18 --imb_type
 |  Parameter | Description|
 |:----------:|:----------:|
 | `--config` | Path to config file (specify by different dataset)|
-|`--algorithm`| `SCL-NL`, `FWD`, `LW`, `SCL_EXP`|
-|`--model`    | `resnet18`|
+|`--algorithm`| `SCL-NL`, `FWD`, `DM`, `SCL_EXP`|
+|`--model`    | `resnet18`, `m-resnet18`, `linear`, `mlp`|
+|`--new_data_aug`    | `icm`, `micm`, `cl_aug`, `orig_mixup`, `none`|
+|`--aug_type`    | `randaug`, `autoaug`, `cutout`, `flipflop`|
 |`--dataset`    | `CIFAR10`, `CIFAR20`, `PCLCIFAR10`, `PCLCIFAR20`, `MNIST`, `KMNIST`, `FashionNIST`|
 |`--imb_factor`| `1`, `0.1`, `0.02`, `0.01`|
 |`--imb_exp`| `exp`, `step`|
