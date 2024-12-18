@@ -16,7 +16,8 @@ from sklearn.cluster import KMeans
 from tqdm.auto import tqdm
 from torchvision.datasets.utils import check_integrity, download_and_extract_archive
 from torchvision.models import resnet18
-from torchvision.transforms import Compose, ToTensor, Normalize, RandomCrop, RandomHorizontalFlip
+from torchvision.transforms import Compose, ToTensor, Normalize, RandomCrop, RandomHorizontalFlip, RandAugment
+from imb_cll.utils.autoaugment import AutoAugment, Cutout
 
 
 class PCLCIFAR10(Dataset, BaseDataset):
@@ -43,7 +44,8 @@ class PCLCIFAR10(Dataset, BaseDataset):
         seed=1126,
         input_dataset=None,
         transition_bias=1.0,
-        setup_type=None
+        setup_type=None,
+        aug_type = None
     ):
         
         self.root = root
@@ -106,43 +108,62 @@ class PCLCIFAR10(Dataset, BaseDataset):
         
         self.transform = transform
         self.target_transform = target_transform
-
-        # if transform is None:
-        if self.data_type== "train":
-            if augment:
-                self.transform = transforms.Compose(
-                    [
-                        transforms.RandomCrop(32, padding=4),
-                        transforms.RandomHorizontalFlip(),
-                        transforms.ToTensor(),
-                        transforms.Normalize(
-                            [0.4914, 0.4822, 0.4465], [0.247, 0.2435, 0.2616]
-                        ),
-                    ]
-                )
-            else:
-                self.transform = transforms.Compose(
-                    [
-                        transforms.ToTensor(),
-                        transforms.Normalize(
-                            [0.4914, 0.4822, 0.4465], [0.247, 0.2435, 0.2616]
-                        ),
-                    ]
-                )
-        else:
-            self.transform = transforms.Compose(
-                [
-                    transforms.ToTensor(),
-                    transforms.Normalize(
-                        [0.4914, 0.4822, 0.4465], [0.247, 0.2435, 0.2616]
-                    ),
-                ]
-            )
-
         self.mean, self.std = [0.4914, 0.4822, 0.4465], [0.247,  0.2435, 0.2616]
         self.idx_train = len(self.data)
         self.root_dir = root
         self.img_max = 5000
+
+        # if transform is None:
+        if self.data_type== "train":
+            if augment:
+                if aug_type == "randaug":
+                    self.transform=Compose([
+                        # GrayscaleTransform(),  # Convert to grayscale
+                        RandAugment(3, 5),
+                        RandomHorizontalFlip(),
+                        RandomCrop(32, 4, padding_mode='reflect'),
+                        ToTensor(),
+                        Normalize(mean=self.mean, std=self.std),
+                    ])
+                elif aug_type == "autoaug":
+                    self.transform=Compose([
+                        # GrayscaleTransform(),  # Convert to grayscale
+                        RandomHorizontalFlip(),
+                        RandomCrop(32, 4, padding_mode='reflect'),
+                        AutoAugment(),
+                        ToTensor(),
+                        Normalize(mean=self.mean, std=self.std),
+                    ])
+                elif aug_type == "cutout":
+                    self.transform=Compose([
+                        # GrayscaleTransform(),  # Convert to grayscale
+                        RandomHorizontalFlip(),
+                        RandomCrop(32, 4, padding_mode='reflect'),
+                        Cutout(),
+                        ToTensor(),
+                        Normalize(mean=self.mean, std=self.std),
+                    ])
+                elif aug_type == "flipflop":
+                    self.transform=Compose([
+                        # GrayscaleTransform(),  # Convert to grayscale
+                        RandomHorizontalFlip(),
+                        RandomCrop(32, 4, padding_mode='reflect'),
+                        ToTensor(),
+                        Normalize(mean=self.mean, std=self.std),
+                    ])
+            else:
+                self.transform=Compose([
+                # GrayscaleTransform(),  # Convert to grayscale
+                ToTensor(),
+                Normalize(mean=self.mean, std=self.std),
+            ])
+
+        else:
+            self.transform=Compose([
+                # GrayscaleTransform(),  # Convert to grayscale
+                ToTensor(),
+                Normalize(mean=self.mean, std=self.std),
+            ])
 
         # self._load_meta()
         if self.data_type =="train":
@@ -253,7 +274,8 @@ class PCLCIFAR20(Dataset, BaseDataset):
         seed=1126,
         input_dataset=None,
         transition_bias=1.0,
-        setup_type=None
+        setup_type=None,
+        aug_type = None
     ):
         self.root = root
         self.data_type = data_type
@@ -312,43 +334,62 @@ class PCLCIFAR20(Dataset, BaseDataset):
 
         self.transform = transform
         self.target_transform = target_transform
-
-        # if transform is None:
-        if self.data_type== "train":
-            if augment:
-                self.transform = transforms.Compose(
-                    [
-                        transforms.RandomCrop(32, padding=4),
-                        transforms.RandomHorizontalFlip(),
-                        transforms.ToTensor(),
-                        transforms.Normalize(
-                            [0.4914, 0.4822, 0.4465], [0.247, 0.2435, 0.2616]
-                        ),
-                    ]
-                )
-            else:
-                self.transform = transforms.Compose(
-                    [
-                        transforms.ToTensor(),
-                        transforms.Normalize(
-                            [0.4914, 0.4822, 0.4465], [0.247, 0.2435, 0.2616]
-                        ),
-                    ]
-                )
-        else:
-            self.transform = transforms.Compose(
-                [
-                    transforms.ToTensor(),
-                    transforms.Normalize(
-                        [0.5071, 0.4865, 0.4409], [0.2673, 0.2564, 0.2762]
-                    ),
-                ]
-            )
-
         self.mean, self.std = [0.5071, 0.4865, 0.4409], [0.2673, 0.2564, 0.2762]
         self.idx_train = len(self.data)
         self.root_dir = root
         self.img_max = 2500
+
+        # if transform is None:
+        if self.data_type== "train":
+            if augment:
+                if aug_type == "randaug":
+                    self.transform=Compose([
+                        # GrayscaleTransform(),  # Convert to grayscale
+                        RandAugment(3, 5),
+                        RandomHorizontalFlip(),
+                        RandomCrop(32, 4, padding_mode='reflect'),
+                        ToTensor(),
+                        Normalize(mean=self.mean, std=self.std),
+                    ])
+                elif aug_type == "autoaug":
+                    self.transform=Compose([
+                        # GrayscaleTransform(),  # Convert to grayscale
+                        RandomHorizontalFlip(),
+                        RandomCrop(32, 4, padding_mode='reflect'),
+                        AutoAugment(),
+                        ToTensor(),
+                        Normalize(mean=self.mean, std=self.std),
+                    ])
+                elif aug_type == "cutout":
+                    self.transform=Compose([
+                        # GrayscaleTransform(),  # Convert to grayscale
+                        RandomHorizontalFlip(),
+                        RandomCrop(32, 4, padding_mode='reflect'),
+                        Cutout(),
+                        ToTensor(),
+                        Normalize(mean=self.mean, std=self.std),
+                    ])
+                elif aug_type == "flipflop":
+                    self.transform=Compose([
+                        # GrayscaleTransform(),  # Convert to grayscale
+                        RandomHorizontalFlip(),
+                        RandomCrop(32, 4, padding_mode='reflect'),
+                        ToTensor(),
+                        Normalize(mean=self.mean, std=self.std),
+                    ])
+            else:
+                self.transform=Compose([
+                # GrayscaleTransform(),  # Convert to grayscale
+                ToTensor(),
+                Normalize(mean=self.mean, std=self.std),
+            ])
+
+        else:
+            self.transform=Compose([
+                # GrayscaleTransform(),  # Convert to grayscale
+                ToTensor(),
+                Normalize(mean=self.mean, std=self.std),
+            ])
 
         # self._load_meta()
         if self.data_type =="train":

@@ -11,24 +11,30 @@ from imb_cll.utils.metrics import accuracy
 from imb_cll.utils.cl_augmentation import mixup_cl_data, mixup_data, aug_intra_class, mamix_intra_aug, aug_intra_class_three_images, aug_intra_class_four_images, intra_class_count_error, mixup_cl_data_count_error
 from imb_cll.models.models import get_modified_resnet18, get_resnet18
 from imb_cll.models.basemodels import Linear, MLP
+import wandb
+import os
+import json
 
 num_workers = 4
 device = "cuda"
 
-def train_mic(args):
+def train_icm(args):
     dataset_name = args.dataset_name
     algo = args.algo
     model = args.model
     lr = args.lr
+    weight_decay = args.weight_decay
     seed = args.seed
     alpha = args.alpha
     data_aug = True if args.data_aug.lower()=="true" else False
+    aug_type = args.aug_type
+    new_data_aug = args.new_data_aug
     mixup = True if args.mixup.lower()=="true" else False
-    mamix_intra_class = True if args.mamix_intra_class.lower()=="true" else False
-    icm = True if args.icm.lower()=="true" else False
-    micm = True if args.micm.lower()=="true" else False
-    four_images_intra_class = True if args.four_images_intra_class.lower()=="true" else False
-    cl_aug = True if args.cl_aug.lower()=="true" else False
+    # mamix_intra_class = True if args.mamix_intra_class.lower()=="true" else False
+    # icm = True if args.icm.lower()=="true" else False
+    # micm = True if args.micm.lower()=="true" else False
+    # four_images_intra_class = True if args.four_images_intra_class.lower()=="true" else False
+    # cl_aug = True if args.cl_aug.lower()=="true" else False
     k_cluster = args.k_cluster
     mamix_ratio = args.mamix_ratio
     warm_epoch = args.warm_epoch
@@ -53,9 +59,9 @@ def train_mic(args):
     if data_aug:
         print("Use data augmentation.")
 
-    if icm:
+    if new_data_aug == "icm":
         print("Use complementary mixup intra class")
-    elif cl_aug:
+    elif new_data_aug == "cl_aug":
         print("Use mixup noise-free")
 
     weights, pretrain = weighting_calculation(input_dataset, imb_factor, n_weight)
@@ -63,7 +69,7 @@ def train_mic(args):
     print("Use prepare_cluster_dataset")
     train_data = "train"
     trainset, input_dim, num_classes = prepare_cluster_dataset(input_dataset=input_dataset, data_type=train_data, kmean_cluster=k_cluster, max_train_samples=None, multi_label=False, 
-                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, setup_type=setup_type)
+                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, setup_type=setup_type, aug_type=aug_type)
     test_data = "test"
     testset, input_dim, num_classes = prepare_cluster_dataset(input_dataset=input_dataset, data_type=test_data, kmean_cluster=k_cluster, max_train_samples=None, multi_label=False, 
                                     augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, setup_type=setup_type)
@@ -104,6 +110,11 @@ def train_mic(args):
         model = Linear(input_dim=input_dim,num_classes=num_classes).to(device)
     else:
         raise NotImplementedError
+    
+    wandb.login()
+    wandb.init(project=args.dataset_name, name=f"{algo}-{dataset_name}-{imb_factor}-{lr}-{weight_decay}-{epochs}-{aug_type}-{new_data_aug}", config={"lr": lr, "weight_decay": weight_decay, "epochs": epochs, "aug_type": aug_type, "algo": algo, "new_data_aug": new_data_aug}, tags=[str(imb_factor)])
+    # Ensure the logs directory exists
+    os.makedirs("logs", exist_ok=True)
 
     for epoch in range(0, epochs):
         # learning_rate = adjust_learning_rate(epochs, epoch, lr)
@@ -136,7 +147,7 @@ def train_mic(args):
         top5 = AverageMeter('Acc@5', ':6.2f')
 
         # learning_rate = lr 
-        optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
+        optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
         total_count_error = 0
 
@@ -148,23 +159,23 @@ def train_mic(args):
             outputs = model(inputs)
 
             if mixup:
-                if icm:
+                if new_data_aug == "icm":
                     #----MIXUP INTRA CLASS----
                     _input_mix, targets = aug_intra_class(inputs, labels, true_labels, k_mean_targets, device, dataset_name, alpha) # Mixup Intra Class
                     targets = targets.to(device)
                     #----MIXUP FILTER INTRA CLASS----
                     # _input_mix, targets = aug_intra_class(inputs, labels, k_mean_targets, true_labels, device, dataset_name, alpha) #Mixup Filter Intra Class
                     # targets = targets.to(device)
-                elif micm:
+                elif new_data_aug == "micm":
                     _input_mix, targets = aug_intra_class_three_images(inputs, labels, true_labels, k_mean_targets, device, dataset_name, alpha)
                     targets = targets.to(device)
-                elif four_images_intra_class:
+                elif new_data_aug == "four_images_intra_class":
                     _input_mix, target_a, target_b, target_c, target_d, lam1, lam2, lam3, lam4, count_error = aug_intra_class_four_images(inputs, labels, true_labels, k_mean_targets, device, dataset_name)
                     total_count_error += count_error
-                elif cl_aug:  # Mixup filter by true label --> Proof of Concept
+                elif new_data_aug == "cl_aug":  # Mixup filter by true label --> Proof of Concept
                     #----MIXUP FILTER EXTRA CLASS----
                     _input_mix, target_a, target_b, lam = mixup_cl_data(inputs, labels, true_labels, device)
-                elif mamix_intra_class:
+                elif new_data_aug == "mamix_intra_class":
                     if len(cls_num_list) == 0:
                         img_max = img_max[0].item()
                         cls_num_list = num_img_per_class(img_max, num_classes, imb_type, imb_factor)
@@ -184,17 +195,17 @@ def train_mic(args):
                 # Move only the inner tensors to the specified device
                 output_mix = model(_input_mix)
 
-                # Calculate the number of samples generated by Mixup method
-                prob_mix = F.softmax(output_mix, dim=1)
-                max_prob_mix, target_mix = torch.max(prob_mix, dim=1)
-                target_mix = target_mix.cpu().numpy()
-                target_orig = labels.cpu().numpy()
-                # Calculate the number of sample in each class
-                cl_samples.append(target_mix)
-                num_samples.append(target_orig)
+                # # Calculate the number of samples generated by Mixup method
+                # prob_mix = F.softmax(output_mix, dim=1)
+                # max_prob_mix, target_mix = torch.max(prob_mix, dim=1)
+                # target_mix = target_mix.cpu().numpy()
+                # target_orig = labels.cpu().numpy()
+                # # Calculate the number of sample in each class
+                # cl_samples.append(target_mix)
+                # num_samples.append(target_orig)
 
                 if algo == "scl-lin":
-                    if icm or micm: #--For soft label----
+                    if new_data_aug == "icm" or new_data_aug == "micm": #--For soft label----
                         p = -F.softmax(output_mix, dim=1)
                         loss = (-p * targets * weights).sum(-1).mean()
                     else: #--For hard label----
@@ -203,7 +214,7 @@ def train_mic(args):
                         target_b = target_b.squeeze()
                         loss = (lam * (F.nll_loss(p, target_a, weights)) + (1 - lam) * (F.nll_loss(p, target_b, weights))).mean() #Soft-Label
                 elif algo == "scl-exp":
-                    if icm or micm: #--For soft label----
+                    if new_data_aug == "icm" or new_data_aug == "micm": #--For soft label----
                         p = -torch.exp(F.softmax(output_mix, dim=1))
                         loss = (-p * targets * weights).sum(-1).mean()
                     else: #--For hard label----
@@ -212,7 +223,7 @@ def train_mic(args):
                         target_b = target_b.squeeze()
                         loss = (lam * (F.nll_loss(p, target_a, weights)) + (1 - lam) * (F.nll_loss(p, target_b, weights))).mean() #Soft-Label
                 elif algo == "scl-nl":
-                    if icm or micm: #--For soft label----
+                    if new_data_aug == "icm" or new_data_aug == "micm": #--For soft label----
                         p = (1 - F.softmax(output_mix, dim=1)).clamp(1e-6,1-1e-6).log()
                         loss = (-p * targets * weights).sum(-1).mean() 
                     # elif four_images_intra_class: #--For hard label----
@@ -230,7 +241,7 @@ def train_mic(args):
                         loss = (lam * F.nll_loss(p, target_a, weights) + (1 - lam) * F.nll_loss(p, target_b, weights)).mean() #Soft-Label
                         # loss = (F.nll_loss(p, target_a, weights) + F.nll_loss(p, target_b, weights)).mean()  # Hard-label
                 elif algo[:3] == "fwd":
-                    if icm or micm: #--For soft label----
+                    if new_data_aug == "icm" or new_data_aug == "micm": #--For soft label----
                         q = torch.mm(F.softmax(output_mix, dim=1), Q).clamp(1e-8,1-1e-8)
                         loss = (-q.log() * targets).sum(-1).mean()
                     else: #--For hard label----
@@ -239,7 +250,7 @@ def train_mic(args):
                         target_b = target_b.squeeze()
                         loss = (lam * F.nll_loss(q.log(), target_a) + (1 -lam) * F.nll_loss(q.log(), target_a)).mean()
                 elif algo == "lw":
-                    if icm or micm: #--For soft label----
+                    if new_data_aug == "icm" or new_data_aug == "micm": #--For soft label----
                         p = 1-F.softmax(output_mix, dim=1)
                         Q_1 = F.log_softmax(p, dim=1)
                         w_1 = torch.mul(p / (num_classes-1), Q_1)
@@ -252,7 +263,7 @@ def train_mic(args):
                         target_b = target_b.squeeze()
                         loss = (lam * (F.nll_loss(q.log(), target_a.long(), weights) + F.nll_loss(w, target_a.long(), weights)) + (1 - lam) * (F.nll_loss(q.log(), target_b.long(), weights) + F.nll_loss(w, target_b.long(), weights)))
                 elif algo == "ure-ga":
-                    if icm or micm: #--For soft label----
+                    if new_data_aug == "icm" or new_data_aug == "micm": #--For soft label----
                         logprob = F.log_softmax(output_mix, dim=1)
                         l = (-logprob * targets)
 
@@ -369,25 +380,29 @@ def train_mic(args):
         #     mixup_noisy_error = round((total_count_error/len(trainset))*100, 2)
         #     print("The number of mixup noise in 1 epoch: {}%".format(mixup_noisy_error))
 
-        # Count the number of samples for each class
-        if mixup:
-            cl_samples = np.concatenate(cl_samples, axis=0)
-            classes, class_counts = np.unique(cl_samples, return_counts=True)
-            print("---------------------------------------")
-            print("The class number in training dataset: {}".format(classes))
-            print("Total number of complementary mixup labels in training dataset: {}".format(class_counts))
+        # # Count the number of samples for each class
+        # if mixup:
+        #     cl_samples = np.concatenate(cl_samples, axis=0)
+        #     classes, class_counts = np.unique(cl_samples, return_counts=True)
+        #     print("---------------------------------------")
+        #     print("The class number in training dataset: {}".format(classes))
+        #     print("Total number of complementary mixup labels in training dataset: {}".format(class_counts))
 
-            num_samples = np.concatenate(num_samples,axis=0)
-            classes, class_counts = np.unique(num_samples, return_counts=True)
-            print("---------------------------------------")
-            print("Total complementary labels in training dataset: {}".format(class_counts))
-            print("---------------------------------------")
+        #     num_samples = np.concatenate(num_samples,axis=0)
+        #     classes, class_counts = np.unique(num_samples, return_counts=True)
+        #     print("---------------------------------------")
+        #     print("Total complementary labels in training dataset: {}".format(class_counts))
+        #     print("---------------------------------------")
 
-        acc1 = validate(model, testloader, eval_n_epoch, epoch, device)
-        is_best = acc1 > best_acc1
-        best_acc1 = max(acc1, best_acc1)
+        val_acc1 = validate(model, testloader, eval_n_epoch, epoch, device)
+        is_best = val_acc1 > best_acc1
+        best_acc1 = max(val_acc1, best_acc1)
         output_best = 'Best Prec@1: %.3f\n' % (best_acc1)
         print(output_best)
+        wandb.log({"train_acc": acc1, "valid_acc": val_acc1, "best_acc": best_acc1.item()})
+        with open(f"logs/{algo}-{dataset_name}-{aug_type}-{lr}--{weight_decay}--{imb_factor}--{new_data_aug}.json", "w") as f:
+            json.dump(best_acc1.item(), f)
+    wandb.finish()
             
 def train_nn(args):
     algo = args.algo
@@ -424,13 +439,13 @@ def train_nn(args):
     testset, input_dim, num_classes = prepare_neighbour_dataset(input_dataset=input_dataset, data_type=test_data, max_train_samples=None, multi_label=False, 
                                     weight=weight, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain)
 
-    trainloader = DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-    testloader = DataLoader(testset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    trainloader = DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=num_workers, drop_last=True)
+    testloader = DataLoader(testset, batch_size=batch_size, shuffle=False, num_workers=num_workers, drop_last=True)
 
     if args.model == "resnet18":
-        model = get_resnet18(num_classes).to(device)
+        model = get_resnet18(num_classes, input_dataset).to(device)
     elif args.model == "m-resnet18":
-        model = get_modified_resnet18(num_classes).to(device)
+        model = get_modified_resnet18(num_classes, input).to(device)
     elif args.model == "mlp":
         model = MLP(input_dim=input_dim,hidden_dim=args.hidden_dim,num_classes=num_classes).to(device)
     elif args.model == "linear":
@@ -569,11 +584,28 @@ if __name__ == "__main__":
         "setup 2"
     ]
 
+    aug_type = [
+        "randaug",
+        "autoaug",
+        "cutout",
+        "flipflop"
+    ]
+
+    new_data_aug = [
+        "icm",
+        "micm",
+        "cl_aug",
+        "mamix_intra_class",
+        "orig_mixup",
+        "none"
+    ]
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--algo', type=str, choices=algo_list, help='Algorithm')
     parser.add_argument('--dataset_name', type=str, choices=dataset_list, help='Dataset name', default='cifar10')
     parser.add_argument('--model', type=str, choices=model_list, help='Model name', default='resnet18')
-    parser.add_argument('--lr', type=float, help='Learning rate', default=1e-4)
+    parser.add_argument('--lr', type=float, help='Learning rate', default=1e-3)
+    parser.add_argument('--weight_decay', type=float, default=1e-5)
     parser.add_argument('--seed', type=int, help='Random seed', default=1126)
     parser.add_argument('--data_aug', type=str, default='false')
     parser.add_argument('--max_train_samples', type=int, default=None)
@@ -588,22 +620,24 @@ if __name__ == "__main__":
     parser.add_argument('--imb_factor', type=float, default=1.0)
     parser.add_argument('--weighting', type=int, default=0)
     parser.add_argument('--mixup', type=str, default='false')
-    parser.add_argument('--icm', type=str, default='false')
-    parser.add_argument('--micm', type=str, default='false')
-    parser.add_argument('--four_images_intra_class', type=str, default='false')
-    parser.add_argument('--cl_aug', type=str, default='false')
-    parser.add_argument('--mamix_intra_class', type=str, default='false')
-    parser.add_argument('--orig_mixup', type=str, default='false')
+    # parser.add_argument('--icm', type=str, default='false')
+    # parser.add_argument('--micm', type=str, default='false')
+    # parser.add_argument('--four_images_intra_class', type=str, default='false')
+    # parser.add_argument('--cl_aug', type=str, default='false')
+    # parser.add_argument('--mamix_intra_class', type=str, default='false')
+    # parser.add_argument('--orig_mixup', type=str, default='false')
     parser.add_argument('--mamix_ratio', type=float, default=-0.25)
     parser.add_argument('--neighbor', type=str, default='false')
     parser.add_argument('--weight', type=str, choices=weight_list, help='rank or distance')
     parser.add_argument('--alpha', type=float, default=1.0)
     parser.add_argument('--transition_bias', type=float, default=1.0)
     parser.add_argument('--setup_type', type=str, choices=setup_list, help='problem setup', default='setup 1')
+    parser.add_argument('--new_data_aug', type=str, choices=new_data_aug, help='choose new data aug method', default='none')
+    parser.add_argument('--aug_type', type=str, choices=aug_type, help='augmentation type', default='flipflop')
 
     args = parser.parse_args()
     neighbor = True if args.neighbor.lower()=="true" else False
     if neighbor:
         train_nn(args)
     else:
-        train_mic(args)
+        train_icm(args)

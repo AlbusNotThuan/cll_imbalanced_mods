@@ -9,9 +9,10 @@ import torch.nn.functional as F
 from torchvision.datasets.vision import VisionDataset
 from torchvision.datasets.utils import check_integrity, download_and_extract_archive
 from torchvision.models import resnet18
-from torchvision.transforms import Compose, ToTensor, Normalize, RandomCrop, RandomHorizontalFlip
+from torchvision.transforms import Compose, ToTensor, Normalize, RandomCrop, RandomHorizontalFlip, RandAugment
 from .base_dataset import BaseDataset
 from sklearn.cluster import KMeans
+from imb_cll.utils.autoaugment import AutoAugment, Cutout
 
 def _cifar100_to_cifar20(target):
     # obtained from cifar_test script
@@ -176,7 +177,8 @@ class CLCIFAR10(VisionDataset, BaseDataset):
         seed=1126,
         input_dataset=None,
         transition_bias=1.0,
-        setup_type=None
+        setup_type=None,
+        aug_type = None
     ):
         self.root = root
         self.data_type = data_type
@@ -270,13 +272,41 @@ class CLCIFAR10(VisionDataset, BaseDataset):
 
         if self.data_type == "train" and not validate:
             if augment:
-                self.transform=Compose([
-                    # GrayscaleTransform(),  # Convert to grayscale
-                    RandomHorizontalFlip(),
-                    RandomCrop(32, 4, padding_mode='reflect'),
-                    ToTensor(),
-                    Normalize(mean=self.mean, std=self.std),
-                ])
+                if aug_type == "randaug":
+                    self.transform=Compose([
+                        # GrayscaleTransform(),  # Convert to grayscale
+                        RandAugment(3, 5),
+                        RandomHorizontalFlip(),
+                        RandomCrop(32, 4, padding_mode='reflect'),
+                        ToTensor(),
+                        Normalize(mean=self.mean, std=self.std),
+                    ])
+                elif aug_type == "autoaug":
+                    self.transform=Compose([
+                        # GrayscaleTransform(),  # Convert to grayscale
+                        RandomHorizontalFlip(),
+                        RandomCrop(32, 4, padding_mode='reflect'),
+                        AutoAugment(),
+                        ToTensor(),
+                        Normalize(mean=self.mean, std=self.std),
+                    ])
+                elif aug_type == "cutout":
+                    self.transform=Compose([
+                        # GrayscaleTransform(),  # Convert to grayscale
+                        RandomHorizontalFlip(),
+                        RandomCrop(32, 4, padding_mode='reflect'),
+                        Cutout(),
+                        ToTensor(),
+                        Normalize(mean=self.mean, std=self.std),
+                    ])
+                elif aug_type == "flipflop":
+                    self.transform=Compose([
+                        # GrayscaleTransform(),  # Convert to grayscale
+                        RandomHorizontalFlip(),
+                        RandomCrop(32, 4, padding_mode='reflect'),
+                        ToTensor(),
+                        Normalize(mean=self.mean, std=self.std),
+                    ])
             else:
                 self.transform=Compose([
                 # GrayscaleTransform(),  # Convert to grayscale
@@ -476,7 +506,8 @@ class CLCIFAR20(CLCIFAR100):
         seed=1126,
         input_dataset=None,
         transition_bias=1.0,
-        setup_type=None
+        setup_type=None,
+        aug_type = None
     ):
         self.data_type = data_type
         self.num_classes = 20
@@ -561,13 +592,41 @@ class CLCIFAR20(CLCIFAR100):
 
         if self.data_type == "train" and not validate:
             if augment:
-                self.transform=Compose([
-                    # GrayscaleTransform(),  # Convert to grayscale
-                    RandomHorizontalFlip(),
-                    RandomCrop(32, 4, padding_mode='reflect'),
-                    ToTensor(),
-                    Normalize(mean=self.mean, std=self.std),
-                ])
+                if aug_type == "randaug":
+                    self.transform=Compose([
+                        # GrayscaleTransform(),  # Convert to grayscale
+                        RandAugment(3, 5),
+                        RandomHorizontalFlip(),
+                        RandomCrop(32, 4, padding_mode='reflect'),
+                        ToTensor(),
+                        Normalize(mean=self.mean, std=self.std),
+                    ])
+                elif aug_type == "autoaug":
+                    self.transform=Compose([
+                        # GrayscaleTransform(),  # Convert to grayscale
+                        RandomHorizontalFlip(),
+                        RandomCrop(32, 4, padding_mode='reflect'),
+                        AutoAugment(),
+                        ToTensor(),
+                        Normalize(mean=self.mean, std=self.std),
+                    ])
+                elif aug_type == "cutout":
+                    self.transform=Compose([
+                        # GrayscaleTransform(),  # Convert to grayscale
+                        RandomHorizontalFlip(),
+                        RandomCrop(32, 4, padding_mode='reflect'),
+                        Cutout(),
+                        ToTensor(),
+                        Normalize(mean=self.mean, std=self.std),
+                    ])
+                elif aug_type == "flipflop":
+                    self.transform=Compose([
+                        # GrayscaleTransform(),  # Convert to grayscale
+                        RandomHorizontalFlip(),
+                        RandomCrop(32, 4, padding_mode='reflect'),
+                        ToTensor(),
+                        Normalize(mean=self.mean, std=self.std),
+                    ])
             else:
                 self.transform=Compose([
                 # GrayscaleTransform(),  # Convert to grayscale
