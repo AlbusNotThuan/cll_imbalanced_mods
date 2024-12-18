@@ -338,6 +338,9 @@ class CLCIFAR10(VisionDataset):
             smooth_comp = alpha * W @ smooth_comp + (1-alpha) * comp_oh
  
         smooth_comp = smooth_comp / smooth_comp.sum(dim=1, keepdim=True)
+
+        import pdb
+        pdb.set_trace()
  
         return smooth_comp
 

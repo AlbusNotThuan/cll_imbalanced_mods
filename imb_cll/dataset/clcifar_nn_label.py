@@ -282,6 +282,8 @@ class NCLCIFAR10(VisionDataset, BaseDataset):
 
             # # least_cl = torch.min(self.comp_labels)[1]
             least_cl = (ol == torch.min(self.comp_labels, dim=-1)[1]).float().mean()
+            import pdb
+            pdb.set_trace()
             print(f"{least_cl:.4f}")
             # print(f"{least_cl:.4f} {margin_avg:.4f} {orig_cl:.4f} {noise_cl:.4f} {res_cl:.4f}")
 
