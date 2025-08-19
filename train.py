@@ -16,7 +16,7 @@ import os
 import json
 
 num_workers = 4
-device = "cuda"
+device = torch.device('cuda:1')
 
 def train_icm(args):
     dataset_name = args.dataset_name
@@ -52,6 +52,8 @@ def train_icm(args):
     mixup_noisy_error = 0
     cls_num_list = []
     k_mean_targets = []
+    cll_type = args.cll_type
+    # most_or_least = args.most_or_least
 
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -69,10 +71,10 @@ def train_icm(args):
     print("Use prepare_cluster_dataset")
     train_data = "train"
     trainset, input_dim, num_classes = prepare_cluster_dataset(input_dataset=input_dataset, data_type=train_data, kmean_cluster=k_cluster, max_train_samples=None, multi_label=False, 
-                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, setup_type=setup_type, aug_type=aug_type)
+                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, setup_type=setup_type, aug_type=aug_type, cll_type=cll_type)
     test_data = "test"
     testset, input_dim, num_classes = prepare_cluster_dataset(input_dataset=input_dataset, data_type=test_data, kmean_cluster=k_cluster, max_train_samples=None, multi_label=False, 
-                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, setup_type=setup_type)
+                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, setup_type=setup_type, cll_type=cll_type)
     
 
     dataset_T, class_count = get_dataset_T(trainset, num_classes)
@@ -634,6 +636,7 @@ if __name__ == "__main__":
     parser.add_argument('--setup_type', type=str, choices=setup_list, help='problem setup', default='setup 1')
     parser.add_argument('--new_data_aug', type=str, choices=new_data_aug, help='choose new data aug method', default='none')
     parser.add_argument('--aug_type', type=str, choices=aug_type, help='augmentation type', default='flipflop')
+    parser.add_argument('--cll_type', type=str, choices=['random', 'least', 'most'], help='complementary label type', default='random')
 
     args = parser.parse_args()
     neighbor = True if args.neighbor.lower()=="true" else False

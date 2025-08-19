@@ -2,22 +2,36 @@ import numpy as np
 import copy
 import torch
 import torch.nn.functional as F
+import pdb
 
 
 class BaseDataset:
     def gen_complementary_target(self):
         # This will NOT shuffle the dataset
+
+        print("Generating complementary targets...")
+
         np.random.seed(1126)
         self.true_targets = copy.deepcopy(self.targets)
         self.k_mean_targets = copy.deepcopy(self.targets)
-        self.targets = [
-            np.random.choice(
-                [j for j in range(self.num_classes) if j != self.targets[i]],
-                3 if self.multi_label else 1,
-                False,
-            ) # generates new complementary target values for each original target value
-            for i in range(len(self.targets))
-        ]
+
+        if self.cll_type == 'random':
+            print("Using random complementary labels")
+            self.targets = [
+                np.random.choice(
+                    [j for j in range(self.num_classes) if j != self.targets[i]],
+                    3 if self.multi_label else 1,
+                    False,
+                ) # generates new complementary target values for each original target value
+                for i in range(len(self.targets))
+            ]
+        elif self.cll_type in ['least', 'most']:
+            self.image_predictor.set_mode(self.cll_type)
+            print(f"Using image predictor type: {self.cll_type}")
+            for i in range(len(self.targets)):
+                self.targets[i] = np.array([self.image_predictor.predict_single_image(self.data[i])['predicted_class']])
+
+        pdb.set_trace()
 
         # T = np.array(torch.full([self.num_classes, self.num_classes], 1/(self.num_classes -1)))
         # for i in range(self.num_classes):

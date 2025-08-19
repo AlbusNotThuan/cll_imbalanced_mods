@@ -1,6 +1,6 @@
 python scl-train.py \
-    --algo=scl-fwd \
-    --dataset_name=cifar10 \
+    --algo=scl-exp \
+    --dataset_name=C \
     --model=resnet18 \
     --lr=1e-4 \
     --seed=0 \

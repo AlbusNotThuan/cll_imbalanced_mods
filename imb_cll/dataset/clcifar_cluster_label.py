@@ -13,6 +13,7 @@ from torchvision.transforms import Compose, ToTensor, Normalize, RandomCrop, Ran
 from .base_dataset import BaseDataset
 from sklearn.cluster import KMeans
 from imb_cll.utils.autoaugment import AutoAugment, Cutout
+from imb_cll.utils.image_predictor import create_predictor
 
 def _cifar100_to_cifar20(target):
     # obtained from cifar_test script
@@ -178,7 +179,8 @@ class CLCIFAR10(VisionDataset, BaseDataset):
         input_dataset=None,
         transition_bias=1.0,
         setup_type=None,
-        aug_type = None
+        aug_type = None,
+        cll_type='random'
     ):
         self.root = root
         self.data_type = data_type
@@ -191,6 +193,8 @@ class CLCIFAR10(VisionDataset, BaseDataset):
         self.kmean_cluster = kmean_cluster # Number of clustering with K mean method.
         self.transition_bias = transition_bias
         self.setup_type = setup_type
+        self.cll_type = cll_type
+        self.image_predictor = create_predictor(device=torch.device('cuda:1'),mode='most', debug=False)
 
         super(CLCIFAR10, self).__init__(
             root, train, transform, target_transform)
