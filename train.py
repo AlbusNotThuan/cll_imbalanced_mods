@@ -16,9 +16,9 @@ import os
 import json
 
 num_workers = 4
-device = torch.device('cuda:1')
 
 def train_icm(args):
+    device = torch.device(f'cuda:{args.gpu}')
     dataset_name = args.dataset_name
     algo = args.algo
     model = args.model
@@ -53,7 +53,8 @@ def train_icm(args):
     cls_num_list = []
     k_mean_targets = []
     cll_type = args.cll_type
-    # most_or_least = args.most_or_least
+    noise = args.noise
+    print("="*28)
 
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -71,11 +72,11 @@ def train_icm(args):
     print("Use prepare_cluster_dataset")
     train_data = "train"
     trainset, input_dim, num_classes = prepare_cluster_dataset(input_dataset=input_dataset, data_type=train_data, kmean_cluster=k_cluster, max_train_samples=None, multi_label=False, 
-                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, setup_type=setup_type, aug_type=aug_type, cll_type=cll_type)
+                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, setup_type=setup_type, aug_type=aug_type, cll_type=cll_type, noise=noise)
     test_data = "test"
     testset, input_dim, num_classes = prepare_cluster_dataset(input_dataset=input_dataset, data_type=test_data, kmean_cluster=k_cluster, max_train_samples=None, multi_label=False, 
-                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, setup_type=setup_type, cll_type=cll_type)
-    
+                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, setup_type=setup_type, cll_type=cll_type, noise=noise)
+
 
     dataset_T, class_count = get_dataset_T(trainset, num_classes)
     # Set Q for forward algorithm
@@ -83,10 +84,16 @@ def train_icm(args):
         Q = torch.full([num_classes, num_classes], 1/(num_classes-1), device=device)
         for i in range(num_classes):
             Q[i][i] = 0
+
     elif algo in ["fwd-r", "ure-ga"]:
         # Print the complementary label distribution T
         dataset_T = torch.tensor(dataset_T, dtype=torch.float).to(device)
         Q = dataset_T
+
+    elif algo in ["cpe-f", "cpe-t"]:
+        dataset_T = torch.tensor(dataset_T, dtype=torch.float).to(device)
+        Q = dataset_T
+
     elif algo == "fwd-int":
         # Print the complementary label distribution T
         dataset_T = torch.tensor(dataset_T, dtype=torch.float).to(device)
@@ -113,6 +120,11 @@ def train_icm(args):
     else:
         raise NotImplementedError
     
+    if algo == "cpe-t":
+        # Register Q as a learnable parameter for CPE-T
+        Q_param = torch.nn.Parameter(Q.log(), requires_grad=True)
+        model.register_parameter(name="Q", param=Q_param)
+
     wandb.login()
     wandb.init(project=args.dataset_name, name=f"{algo}-{dataset_name}-{imb_factor}-{lr}-{weight_decay}-{epochs}-{aug_type}-{new_data_aug}", config={"lr": lr, "weight_decay": weight_decay, "epochs": epochs, "aug_type": aug_type, "algo": algo, "new_data_aug": new_data_aug}, tags=[str(imb_factor)])
     # Ensure the logs directory exists
@@ -332,6 +344,61 @@ def train_icm(args):
                         loss = loss_vec.sum()
                     else:
                         loss = F.relu(-loss_vec).sum()
+
+                elif algo == "mcl-exp":
+                    labels = labels.squeeze().long()
+                    y = F.one_hot(labels, num_classes=num_classes).float()
+                    p_softmax = F.softmax(outputs, dim=1)
+                    
+                    p_others = ((1 - y) * p_softmax).sum(dim=1)
+                    loss_per_sample = torch.exp(-p_others)
+                    
+                    # Scaling and averaging over batch
+                    loss = (2 * (num_classes - 2)) * loss_per_sample / y.sum(dim=1)
+                    loss = loss.sum()
+
+                elif algo == "mcl-mae":
+                    labels = labels.squeeze().long()
+                    y = F.one_hot(labels, num_classes=num_classes).float()
+                    p_softmax = F.softmax(outputs, dim=1)
+                    
+                    p_others = ((1 - y) * p_softmax).sum(dim=1)
+                    loss_per_sample = 1.0 - p_others
+                    
+                    # Scaling and summing over batch
+                    loss = (2 * (num_classes - 1)) * loss_per_sample / y.sum(dim=1)
+                    loss = loss.sum()
+
+                elif algo == "mcl-log":
+                    labels = labels.squeeze().long()
+                    y = F.one_hot(labels, num_classes=num_classes).float()
+                    p_softmax = F.softmax(outputs, dim=1)
+                    
+                    p_others = ((1 - y) * p_softmax).sum(dim=1)
+                    loss_per_sample = -torch.log(p_others.clamp(min=1e-8))
+                    
+                    # Scaling and summing over batch
+                    loss = (2 * (num_classes - 1)) * loss_per_sample / y.sum(dim=1)
+                    loss = loss.sum()
+
+                elif algo == "cpe-i":
+                    p_softmax = F.softmax(outputs, dim=1)
+                    labels = labels.squeeze().long()
+                    loss = F.nll_loss(p_softmax.log(), labels, weights)
+                
+                elif algo == "cpe-f":
+                    p_softmax = F.softmax(outputs, dim=1)
+                    q = torch.mm(p_softmax, Q).clamp(1e-6, 1.0)
+                    labels = labels.squeeze().long()
+                    loss = F.nll_loss(q.log(), labels, weights)
+
+                elif algo == "cpe-t":
+                    p_softmax = F.softmax(outputs, dim=1)
+                    Q_learnable = F.softmax(model.Q, dim=1)
+                    q = torch.mm(p_softmax, Q_learnable).clamp(1e-6, 1.0)
+                    labels = labels.squeeze().long()
+                    loss = F.nll_loss(q.log(), labels, weights)
+                    
                 else:
                     raise NotImplementedError
 
@@ -407,6 +474,7 @@ def train_icm(args):
     wandb.finish()
             
 def train_nn(args):
+    device = torch.device(f'cuda:{args.gpu}')
     algo = args.algo
     model = args.model
     weight = args.weight
@@ -566,7 +634,13 @@ if __name__ == "__main__":
         "fwd-int",
         "fwd-u",
         "fwd-r",
-        "lw"
+        "lw",
+        "mcl-exp",
+        "mcl-mae",
+        "mcl-log",
+        "cpe-i",
+        "cpe-t",
+        "cpe-f"
     ]
 
     model_list = [
@@ -636,7 +710,9 @@ if __name__ == "__main__":
     parser.add_argument('--setup_type', type=str, choices=setup_list, help='problem setup', default='setup 1')
     parser.add_argument('--new_data_aug', type=str, choices=new_data_aug, help='choose new data aug method', default='none')
     parser.add_argument('--aug_type', type=str, choices=aug_type, help='augmentation type', default='flipflop')
-    parser.add_argument('--cll_type', type=str, choices=['random', 'least', 'most'], help='complementary label type', default='random')
+    parser.add_argument('--cll_type', type=str, choices=['random', 'least', 'most', 'most_no_noise'], help='complementary label type', default='random')
+    parser.add_argument('--gpu', type=int, choices=[0, 1, 2, 3], help='GPU to use for training', default=1)
+    parser.add_argument('--noise', type=bool, default=False, help='Whether to use noise in the training dataset')
 
     args = parser.parse_args()
     neighbor = True if args.neighbor.lower()=="true" else False

@@ -23,8 +23,8 @@ class ImagePredictor:
     This class loads a pretrained ResNet18 model and provides methods to predict
     image classes from numpy arrays in HWC format (Height, Width, Channels).
     """
-    
-    def __init__(self, device=None, pretrained=True, mode='most', debug=False):
+
+    def __init__(self, device=None, pretrained=True, mode='most', debug=False, noise=False):
         """
         Initialize the image predictor.
         
@@ -36,6 +36,7 @@ class ImagePredictor:
         """
         self.debug = debug
         self.mode = mode
+        self.noise = noise
         
         # Automatically select device if not provided
         if device is None:
@@ -97,7 +98,13 @@ class ImagePredictor:
             mode (str): Mode to set ('most' or 'least')
         """
         self.mode = mode
-    
+
+    def set_true_label(self, true_label):
+        """
+        Set the true label for the current image
+        """
+        self.true_label = true_label
+
     def preprocess_image(self, image_array):
         """
         Preprocess a numpy image array for model input.
@@ -196,7 +203,7 @@ class ImagePredictor:
         # Prepare results based on mode
         if self.mode == 'most':
             results = {
-                'predicted_class': self._get_second_highest_class(probs_array) 
+                'predicted_class': self._get_nth_highest_class(probs_array, 1),
             }
         elif self.mode == 'least':
             results = {
@@ -255,7 +262,41 @@ class ImagePredictor:
             print(f"🔧 DEBUG: Lowest class: {lowest_idx} with prob {probabilities[lowest_idx]:.6f}")
         
         return lowest_idx
-    
+
+    def _get_nth_highest_class(self, probabilities, n):
+        """
+        Get the nth most relevant class after removing the true label.
+
+        Args:
+            probabilities (np.ndarray): Array of class probabilities.
+            n (int): The rank of the class to retrieve (1-based, e.g., 1 for highest).
+
+        Returns:
+            int: Index of the nth most relevant class, or -1 if n is out of bounds.
+        """
+        # Create a dictionary of {class_index: probability}
+        prob_dict = {i: prob for i, prob in enumerate(probabilities)}
+
+        # Remove the true label from the dictionary
+        if self.true_label in prob_dict:
+            del prob_dict[self.true_label]
+        
+        # Sort the remaining items by probability in descending order
+        # The result is a list of (class_index, probability) tuples
+        sorted_classes = sorted(prob_dict.items(), key=lambda item: item[1], reverse=True)
+
+        # Check if n is within the bounds of the remaining classes
+        if 1 <= n <= len(sorted_classes):
+            # Return the class index of the nth highest probability
+            nth_highest_class = sorted_classes[n-1][0]
+            if self.debug:
+                print(f"🔧 DEBUG: After removing true label {self.true_label}, the {n}-th highest class is {nth_highest_class}")
+            return nth_highest_class
+        else:
+            # n is out of bounds (e.g., asking for the 10th highest from 9 classes)
+            warnings.warn(f"Warning: n={n} is out of bounds for the remaining {len(sorted_classes)} classes.")
+            return -1
+        
     def get_model_info(self):
         """
         Get information about the loaded model.
@@ -277,7 +318,8 @@ class ImagePredictor:
         }
 
 
-def create_predictor(device=None, pretrained=True, mode='most', debug=True):
+
+def create_predictor(device=None, pretrained=True, mode='most', debug=True, noise=False):
     """
     Convenience function to create an ImagePredictor instance.
     
@@ -289,7 +331,7 @@ def create_predictor(device=None, pretrained=True, mode='most', debug=True):
     Returns:
         ImagePredictor: Initialized predictor instance
     """
-    return ImagePredictor(device=device, pretrained=pretrained, mode=mode, debug=debug)
+    return ImagePredictor(device=device, pretrained=pretrained, mode=mode, debug=debug, noise=noise)
 
 
 

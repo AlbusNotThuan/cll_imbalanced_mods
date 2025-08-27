@@ -180,7 +180,8 @@ class CLCIFAR10(VisionDataset, BaseDataset):
         transition_bias=1.0,
         setup_type=None,
         aug_type = None,
-        cll_type='random'
+        cll_type='random',
+        noise=False
     ):
         self.root = root
         self.data_type = data_type
@@ -194,7 +195,8 @@ class CLCIFAR10(VisionDataset, BaseDataset):
         self.transition_bias = transition_bias
         self.setup_type = setup_type
         self.cll_type = cll_type
-        self.image_predictor = create_predictor(device=torch.device('cuda:1'),mode='most', debug=False)
+        self.noise = noise
+        # self.image_predictor = create_predictor(device=torch.device('cuda:1'),mode='most', debug=False, noise=self.noise)
 
         super(CLCIFAR10, self).__init__(
             root, train, transform, target_transform)

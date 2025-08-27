@@ -25,11 +25,25 @@ class BaseDataset:
                 ) # generates new complementary target values for each original target value
                 for i in range(len(self.targets))
             ]
-        elif self.cll_type in ['least', 'most']:
-            self.image_predictor.set_mode(self.cll_type)
-            print(f"Using image predictor type: {self.cll_type}")
-            for i in range(len(self.targets)):
-                self.targets[i] = np.array([self.image_predictor.predict_single_image(self.data[i])['predicted_class']])
+        elif self.cll_type in ['least', 'most', 'most_no_noise']:
+            # self.image_predictor.set_mode(self.cll_type)
+            # print(f"Using image predictor type: {self.cll_type}")
+            # for i in range(len(self.targets)):
+            #     self.image_predictor.set_true_label(self.true_targets[i])
+            #     self.targets[i] = np.array([self.image_predictor.predict_single_image(self.data[i])['predicted_class']])
+
+            print(f"Loading {self.cll_type} complementary labels from file")
+            filename = f"{self.cll_type}.txt"
+            with open(filename, 'r') as f:
+                content = f.read().strip()
+            
+            # Parse the string representation of arrays
+            import re
+            pattern = r'array\(\[(\d+)\]\)'
+            matches = re.findall(pattern, content)
+            
+            self.targets = [np.array([int(match)]) for match in matches]
+            print(f"Loaded {len(self.targets)} {self.cll_type} complementary labels")
 
         pdb.set_trace()
 
