@@ -14,6 +14,7 @@ from imb_cll.models.basemodels import Linear, MLP
 import wandb
 import os
 import json
+import pdb
 
 num_workers = 4
 
@@ -77,8 +78,10 @@ def train_icm(args):
     testset, input_dim, num_classes = prepare_cluster_dataset(input_dataset=input_dataset, data_type=test_data, kmean_cluster=k_cluster, max_train_samples=None, multi_label=False, 
                                     augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, setup_type=setup_type, cll_type=cll_type, noise=noise)
 
-
     dataset_T, class_count = get_dataset_T(trainset, num_classes)
+
+    # Debug
+    print(f"Number of training samples: {len(trainset)}")
     # Set Q for forward algorithm
     if algo in ["fwd-u", "ure-ga-u"]:
         Q = torch.full([num_classes, num_classes], 1/(num_classes-1), device=device)
@@ -167,6 +170,12 @@ def train_icm(args):
 
         for i, (inputs, labels, true_labels, k_mean_targets, img_max) in enumerate(trainloader):
             inputs, labels, true_labels, k_mean_targets = inputs.to(device), labels.to(device), true_labels.to(device), k_mean_targets.to(device)
+
+            # Ha comment 31/08/2025
+            breakpoint()
+            classes, class_counts = np.unique(labels.cpu().numpy(), return_counts=True)
+
+            # pdb.set_trace()
 
             # Two kinds of output
             optimizer.zero_grad()
@@ -618,6 +627,7 @@ if __name__ == "__main__":
     dataset_list = [
         "CIFAR10",
         "CIFAR20",
+        "CIFAR100",
         "PCLCIFAR10",
         "PCLCIFAR20",
         "KMNIST",

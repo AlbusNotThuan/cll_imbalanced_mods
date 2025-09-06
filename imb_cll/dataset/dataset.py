@@ -22,6 +22,20 @@ def prepare_dataset(dataset, data_type, max_train_samples=None, multi_label=Fals
             )
         else:
             dataset = CLCIFAR10(root="./data/cifar10", data_type = data_type, train=False)
+    elif dataset == "cifar100":
+        if data_type == "train":
+            dataset = CLCIFAR100(
+                root="./data/cifar100",
+                data_type=data_type,
+                train=True,
+                max_train_samples=max_train_samples,
+                multi_label=multi_label,
+                augment=augment,
+                imb_type=imb_type,
+                imb_factor=imb_factor,
+            )
+        else:
+            dataset = CLCIFAR100(root="./data/cifar100", data_type = data_type, train=False)
     else:
         raise NotImplementedError
     return dataset, dataset.input_dim, dataset.num_classes
@@ -61,6 +75,23 @@ def prepare_neighbour_dataset(input_dataset, data_type=None, max_train_samples=N
             )
         else:
             dataset = NCLCIFAR20(root="./data/cifar20", train=False, data_type=data_type, input_dataset=input_dataset)
+    elif input_dataset == "CIFAR100":
+        if data_type == "train":
+            dataset = NCLCIFAR100(
+                root="./data/cifar100",
+                train=True,
+                data_type=data_type,
+                download=True,
+                max_train_samples=max_train_samples,
+                multi_label=multi_label,
+                weight=weight,
+                imb_type=imb_type,
+                imb_factor=imb_factor,
+                pretrain=pretrain,
+                input_dataset=input_dataset,
+            )
+        else:
+            dataset = NCLCIFAR100(root="./data/cifar100", train=False, data_type=data_type, input_dataset=input_dataset)
     elif input_dataset == "MNIST":
         if data_type == "train":
             dataset = NCLMNIST(
@@ -129,6 +160,31 @@ def prepare_cluster_dataset(input_dataset, data_type=None, kmean_cluster= None, 
             )
         else:
             dataset = CLCIFAR20(root="./data/cifar20", train=False, data_type=data_type, input_dataset=input_dataset)
+    elif input_dataset == "CIFAR100":
+        if data_type == "train":
+            dataset = CLCIFAR100(
+                root="./data/cifar100",
+                train=True,
+                data_type=data_type,
+                download=True,
+                kmean_cluster=kmean_cluster,
+                max_train_samples=max_train_samples,
+                multi_label=multi_label,
+                augment=augment,
+                imb_type=imb_type,
+                imb_factor=imb_factor,
+                pretrain=pretrain,
+                input_dataset=input_dataset,
+                transition_bias=transition_bias,
+                setup_type=setup_type,
+                aug_type=aug_type,
+                cll_type=cll_type,
+                noise=noise
+            )
+        else:
+            dataset = CLCIFAR100(root="./data/cifar100", train=False, data_type=data_type, input_dataset=input_dataset)
+
+    
     
     elif input_dataset == "PCLCIFAR10":
         if data_type == "train":

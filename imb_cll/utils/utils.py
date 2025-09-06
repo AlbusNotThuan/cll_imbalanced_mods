@@ -224,6 +224,23 @@ def weighting_calculation(dataset_name, imb_factor, n_weight):
             pretrain = "./balanced_cll_pretrained/KMNIST/KMNIST_checkpoint_0799_-0.9231.pth.tar"
             weights = torch.tensor([1.37520534, 1.1097013,  1.04209213, 0.96593773, 0.9537242, 0.92060064, 0.91322734, 0.90291396, 0.90958861, 0.90700876])
             weights = weights ** n_weight
+    elif dataset_name == "CIFAR100":
+        if imb_factor == 1:
+            pretrain = "./balanced_cll_pretrained/CIFAR100/CIFAR100_checkpoint_0799.pth.tar"
+            # Weights for 100 classes - balanced case
+            weights = torch.tensor([
+                1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+                1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+                1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+                1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+                1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+                1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+                1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+                1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+                1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+                1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
+            ])
+            weights = weights ** n_weight
     else:
         raise NotImplementedError
 

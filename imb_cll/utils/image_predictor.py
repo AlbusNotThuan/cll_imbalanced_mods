@@ -32,7 +32,9 @@ class ImagePredictor:
             device (torch.device, optional): Device to run the model on. 
                                            If None, automatically selects GPU if available.
             pretrained (bool): Whether to load pretrained weights. Default: True.
-            debug (bool): Whether to print debug messages. Default: True.
+            mode (str): Prediction mode ('most', 'least', 'most_no_noise'). Default: 'most'
+            debug (bool): Whether to print debug messages. Default: False.
+            noise (bool): If False, remove true label before prediction. If True, keep true label. Default: False.
         """
         self.debug = debug
         self.mode = mode
@@ -209,6 +211,14 @@ class ImagePredictor:
             results = {
                 'predicted_class': self._get_lowest_class(probs_array)
             }
+        elif self.mode == 'most_no_noise':
+            # For most_no_noise, we want the highest class without removing true label
+            old_noise = self.noise
+            self.noise = True
+            results = {
+                'predicted_class': self._get_nth_highest_class(probs_array, 1)
+            }
+            self.noise = old_noise
         else:  # default mode returns full results
             results = {
                 'logits': logits.cpu().numpy().flatten(),
@@ -255,8 +265,19 @@ class ImagePredictor:
         Returns:
             int: Index of class with lowest probability
         """
-        # Get index of minimum probability
-        lowest_idx = np.argmin(probabilities)
+        if not self.noise and hasattr(self, 'true_label'):
+            # Remove true label first, then find lowest
+            prob_dict = {i: prob for i, prob in enumerate(probabilities)}
+            if self.true_label in prob_dict:
+                del prob_dict[self.true_label]
+            
+            if len(prob_dict) == 0:
+                return -1
+                
+            lowest_idx = min(prob_dict.keys(), key=lambda k: prob_dict[k])
+        else:
+            # Find lowest from all classes
+            lowest_idx = np.argmin(probabilities)
         
         if self.debug:
             print(f"🔧 DEBUG: Lowest class: {lowest_idx} with prob {probabilities[lowest_idx]:.6f}")
@@ -265,20 +286,20 @@ class ImagePredictor:
 
     def _get_nth_highest_class(self, probabilities, n):
         """
-        Get the nth most relevant class after removing the true label.
+        Get the nth highest class with configurable true label removal.
 
         Args:
             probabilities (np.ndarray): Array of class probabilities.
             n (int): The rank of the class to retrieve (1-based, e.g., 1 for highest).
 
         Returns:
-            int: Index of the nth most relevant class, or -1 if n is out of bounds.
+            int: Index of the nth highest class, or -1 if n is out of bounds.
         """
         # Create a dictionary of {class_index: probability}
         prob_dict = {i: prob for i, prob in enumerate(probabilities)}
 
-        # Remove the true label from the dictionary
-        if self.true_label in prob_dict:
+        # Remove the true label from the dictionary if noise is False
+        if not self.noise and hasattr(self, 'true_label') and self.true_label in prob_dict:
             del prob_dict[self.true_label]
         
         # Sort the remaining items by probability in descending order
@@ -290,11 +311,15 @@ class ImagePredictor:
             # Return the class index of the nth highest probability
             nth_highest_class = sorted_classes[n-1][0]
             if self.debug:
-                print(f"🔧 DEBUG: After removing true label {self.true_label}, the {n}-th highest class is {nth_highest_class}")
+                if not self.noise and hasattr(self, 'true_label'):
+                    print(f"🔧 DEBUG: After removing true label {self.true_label}, the {n}-th highest class is {nth_highest_class}")
+                else:
+                    print(f"🔧 DEBUG: The {n}-th highest class is {nth_highest_class}")
             return nth_highest_class
         else:
             # n is out of bounds (e.g., asking for the 10th highest from 9 classes)
-            warnings.warn(f"Warning: n={n} is out of bounds for the remaining {len(sorted_classes)} classes.")
+            if self.debug:
+                warnings.warn(f"Warning: n={n} is out of bounds for the remaining {len(sorted_classes)} classes.")
             return -1
         
     def get_model_info(self):
@@ -319,19 +344,29 @@ class ImagePredictor:
 
 
 
-def create_predictor(device=None, pretrained=True, mode='most', debug=True, noise=False):
+def create_predictor(device=None, pretrained=True, mode='most', debug=True, noise=False, dataset_type="CIFAR10"):
     """
     Convenience function to create an ImagePredictor instance.
     
     Args:
         device (torch.device, optional): Device to run the model on
         pretrained (bool): Whether to load pretrained weights
+        mode (str): Prediction mode ('most', 'least', 'most_no_noise')
         debug (bool): Whether to enable debug messages
+        noise (bool): Whether to include true label in predictions
+        dataset_type (str): Type of dataset ("CIFAR10", "CIFAR20", or "CIFAR100")
     
     Returns:
-        ImagePredictor: Initialized predictor instance
+        ImagePredictor, ImagePredictorCIFAR20, or ImagePredictorCIFAR100: Initialized predictor instance
     """
-    return ImagePredictor(device=device, pretrained=pretrained, mode=mode, debug=debug, noise=noise)
+    if dataset_type == "CIFAR20":
+        from .image_predictor_cifar20 import ImagePredictorCIFAR20
+        return ImagePredictorCIFAR20(device=device, pretrained=pretrained, mode=mode, debug=debug, noise=noise)
+    elif dataset_type == "CIFAR100":
+        from .image_predictor_cifar100 import ImagePredictorCIFAR100
+        return ImagePredictorCIFAR100(device=device, pretrained=pretrained, mode=mode, debug=debug, noise=noise)
+    else:  # Default to CIFAR10
+        return ImagePredictor(device=device, pretrained=pretrained, mode=mode, debug=debug, noise=noise)
 
 
 

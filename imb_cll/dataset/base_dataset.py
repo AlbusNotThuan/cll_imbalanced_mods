@@ -3,6 +3,7 @@ import copy
 import torch
 import torch.nn.functional as F
 import pdb
+import os
 
 
 class BaseDataset:
@@ -26,16 +27,49 @@ class BaseDataset:
                 for i in range(len(self.targets))
             ]
         elif self.cll_type in ['least', 'most', 'most_no_noise']:
-            # self.image_predictor.set_mode(self.cll_type)
-            # print(f"Using image predictor type: {self.cll_type}")
-            # for i in range(len(self.targets)):
-            #     self.image_predictor.set_true_label(self.true_targets[i])
-            #     self.targets[i] = np.array([self.image_predictor.predict_single_image(self.data[i])['predicted_class']])
+            # Use image predictor based on dataset type
+            from imb_cll.utils.image_predictor import create_predictor
+            
+            # Determine dataset type
+            dataset_type = getattr(self, 'dataset_name', 'CIFAR10')
+            
+            # Set noise flag based on mode
+            noise_flag = (self.cll_type == 'most_no_noise')
+            
+            self.image_predictor = create_predictor(
+                device=torch.device('cuda:0'), 
+                mode=self.cll_type if self.cll_type != 'most_no_noise' else 'most',
+                debug=False, 
+                noise=noise_flag,
+                dataset_type=dataset_type
+            )
+            
+            print(f"Using image predictor type: {self.cll_type} for dataset: {dataset_type}")
+            
+            # Check if labels already exist in organized structure
+            organized_file_path = f"generated_labels/{dataset_type.lower()}/{self.cll_type}.txt"
+            if os.path.exists(organized_file_path):
+                print(f"Loading {self.cll_type} complementary labels from {organized_file_path}")
+                with open(organized_file_path, 'r') as f:
+                    content = f.read().strip()
+            else:
+                print(f"Generating {self.cll_type} complementary labels for {dataset_type}...")
+                # Generate new labels
+                generated_labels = []
+                for i in range(len(self.targets)):
+                    self.image_predictor.set_true_label(self.true_targets[i])
+                    predicted = self.image_predictor.predict_single_image(self.data[i])
+                    generated_labels.append(np.array([predicted['predicted_class']]))
+                self.targets = generated_labels
 
-            print(f"Loading {self.cll_type} complementary labels from file")
-            filename = f"{self.cll_type}.txt"
-            with open(filename, 'r') as f:
-                content = f.read().strip()
+                # Save to organized structure
+                os.makedirs(f"generated_labels/{dataset_type.lower()}", exist_ok=True)
+                with open(organized_file_path, 'w') as f:
+                    for label in generated_labels:
+                        f.write(f"array([{label[0]}])\n")
+                
+                print(f"Saved {len(generated_labels)} {self.cll_type} complementary labels to {organized_file_path}")
+                return  # Skip parsing since we already have the labels
             
             # Parse the string representation of arrays
             import re
