@@ -114,7 +114,7 @@ def prepare_neighbour_dataset(input_dataset, data_type=None, max_train_samples=N
     
     return dataset, dataset.input_dim, dataset.num_classes
 
-def prepare_cluster_dataset(input_dataset, data_type=None, kmean_cluster= None, max_train_samples=None, multi_label=False, augment=False, imb_type=None, imb_factor=1.0, pretrain=None, transition_bias = 1.0, setup_type=None, aug_type=None, cll_type='random', noise=False):
+def prepare_cluster_dataset(input_dataset, data_type=None, kmean_cluster= None, max_train_samples=None, multi_label=False, augment=False, imb_type=None, imb_factor=1.0, pretrain=None, transition_bias = 1.0, setup_type=None, aug_type=None, cll_type='random', noise=False, transition_matrix=None):
     if input_dataset == "CIFAR10":
         if data_type == "train":
             dataset = CLCIFAR10(
@@ -134,7 +134,8 @@ def prepare_cluster_dataset(input_dataset, data_type=None, kmean_cluster= None, 
                 setup_type=setup_type,
                 aug_type=aug_type,
                 cll_type=cll_type,
-                noise=noise
+                noise=noise,
+                transition_matrix=transition_matrix
             )
         else:
             dataset = CLCIFAR10(root="./data/cifar10", train=False, data_type=data_type, input_dataset=input_dataset)
@@ -156,7 +157,8 @@ def prepare_cluster_dataset(input_dataset, data_type=None, kmean_cluster= None, 
                 transition_bias=transition_bias,
                 setup_type=setup_type,
                 aug_type=aug_type,
-                cll_type=cll_type
+                cll_type=cll_type,
+                transition_matrix=transition_matrix
             )
         else:
             dataset = CLCIFAR20(root="./data/cifar20", train=False, data_type=data_type, input_dataset=input_dataset)
@@ -179,7 +181,8 @@ def prepare_cluster_dataset(input_dataset, data_type=None, kmean_cluster= None, 
                 setup_type=setup_type,
                 aug_type=aug_type,
                 cll_type=cll_type,
-                noise=noise
+                noise=noise,
+                transition_matrix=transition_matrix
             )
         else:
             dataset = CLCIFAR100(root="./data/cifar100", train=False, data_type=data_type, input_dataset=input_dataset)

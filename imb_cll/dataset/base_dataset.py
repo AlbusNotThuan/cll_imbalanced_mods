@@ -78,6 +78,94 @@ class BaseDataset:
             
             self.targets = [np.array([int(match)]) for match in matches]
             print(f"Loaded {len(self.targets)} {self.cll_type} complementary labels")
+        
+        elif self.cll_type in ['bias_most', 'bias_least', 'bias_random']:
+            print(f"Using {self.cll_type} complementary labels")
+            
+            # Determine dataset type
+            dataset_type = getattr(self, 'dataset_name', 'CIFAR10').upper()
+            
+            # Define bias mappings based on dataset and bias type
+            if dataset_type == 'CIFAR10':
+                if self.cll_type == 'bias_most':
+                    bias_mapping = {
+                        0: 8, 1: 9, 2: 0, 3: 5, 4: 3, 
+                        5: 3, 6: 3, 7: 5, 8: 0, 9: 1
+                    }
+                elif self.cll_type == 'bias_least':
+                    bias_mapping = {
+                        0: 6, 1: 4, 2: 1, 3: 2, 4: 2,
+                        5: 8, 6: 7, 7: 8, 8: 7, 9: 4
+                    }
+                elif self.cll_type == 'bias_random':
+                    # Create a deterministic random mapping where each true label maps to a unique CL label
+                    np.random.seed(42)
+                    bias_mapping = {}
+                    # Simple approach: create a random permutation and use it as mapping
+                    all_labels = list(range(10))
+                    np.random.shuffle(all_labels)
+                    for true_label in range(10):
+                        # Find the next available label that's not the true label
+                        for candidate in all_labels:
+                            if candidate != true_label:
+                                bias_mapping[true_label] = candidate
+                                all_labels.remove(candidate)
+                                break
+                        # If we run out of shuffled labels, use any remaining valid label
+                        if true_label not in bias_mapping:
+                            remaining = [x for x in range(10) if x != true_label and x not in bias_mapping.values()]
+                            if remaining:
+                                bias_mapping[true_label] = remaining[0]
+                            
+            elif dataset_type == 'CIFAR20':
+                if self.cll_type == 'bias_most':
+                    raise NotImplementedError("CIFAR-20 bias_most mapping not yet implemented")
+                elif self.cll_type == 'bias_least':
+                    raise NotImplementedError("CIFAR-20 bias_least mapping not yet implemented")
+                elif self.cll_type == 'bias_random':
+                    np.random.seed(42)
+                    bias_mapping = {}
+                    all_labels = list(range(20))
+                    np.random.shuffle(all_labels)
+                    for true_label in range(20):
+                        for candidate in all_labels:
+                            if candidate != true_label:
+                                bias_mapping[true_label] = candidate
+                                all_labels.remove(candidate)
+                                break
+                        if true_label not in bias_mapping:
+                            remaining = [x for x in range(20) if x != true_label and x not in bias_mapping.values()]
+                            if remaining:
+                                bias_mapping[true_label] = remaining[0]
+                            
+            elif dataset_type == 'CIFAR100':
+                if self.cll_type == 'bias_most':
+                    raise NotImplementedError("CIFAR-100 bias_most mapping not yet implemented")
+                elif self.cll_type == 'bias_least':
+                    raise NotImplementedError("CIFAR-100 bias_least mapping not yet implemented")
+                elif self.cll_type == 'bias_random':
+                    np.random.seed(42)
+                    bias_mapping = {}
+                    all_labels = list(range(100))
+                    np.random.shuffle(all_labels)
+                    for true_label in range(100):
+                        for candidate in all_labels:
+                            if candidate != true_label:
+                                bias_mapping[true_label] = candidate
+                                all_labels.remove(candidate)
+                                break
+                        if true_label not in bias_mapping:
+                            remaining = [x for x in range(100) if x != true_label and x not in bias_mapping.values()]
+                            if remaining:
+                                bias_mapping[true_label] = remaining[0]
+            else:
+                raise ValueError(f"Unsupported dataset type: {dataset_type}")
+            
+            self.targets = [
+                np.array([bias_mapping[self.targets[i]]])
+                for i in range(len(self.targets))
+            ]
+            print(f"Applied {self.cll_type} mapping to {len(self.targets)} labels")
 
         pdb.set_trace()
 
@@ -194,6 +282,43 @@ class BaseDataset:
         self.data = new_data
         self.targets = new_targets
     
+    def generate_cl_from_matrix(self, transition_matrix):
+        """
+        Generates complementary labels based on a given transition matrix.
+        :param transition_matrix: A numpy array of shape (num_classes, num_classes)
+                                 Row sums should equal 1, diagonal elements can be non-zero
+        """
+        print("Generating complementary labels from transition matrix...")
+        num_classes = self.num_classes
+        if transition_matrix.shape != (num_classes, num_classes):
+            raise ValueError(f"Transition matrix must have shape ({num_classes}, {num_classes})")
+
+        # Ensure rows sum to 1 (normalize if needed)
+        T = transition_matrix.copy().astype(float)
+        row_sums = T.sum(axis=1, keepdims=True)
+        # Avoid division by zero for rows that are all zero
+        row_sums[row_sums == 0] = 1
+        T = T / row_sums
+
+        # Verify row sums are 1
+        actual_sums = T.sum(axis=1)
+        if not np.allclose(actual_sums, 1.0, atol=1e-6):
+            print(f"Warning: Row sums are not exactly 1: {actual_sums}")
+
+        np.random.seed(self.seed)
+        self.true_targets = copy.deepcopy(self.targets)
+        self.k_mean_targets = copy.deepcopy(self.targets)
+        
+        new_targets = []
+        for true_label in self.targets:
+            prob = T[true_label, :]
+            # Sample one label based on the probability distribution
+            cl_label = np.random.choice(np.arange(num_classes), p=prob)
+            new_targets.append(np.array([cl_label]))
+        
+        self.targets = new_targets
+        print(f"Done generating complementary labels from transition matrix. Generated {len(new_targets)} labels.")
+
     def get_cls_num_list(self):
         cls_num_list = []
         for i in range(self.cls_num):

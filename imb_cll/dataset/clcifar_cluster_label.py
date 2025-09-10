@@ -181,7 +181,8 @@ class CLCIFAR10(VisionDataset, BaseDataset):
         setup_type=None,
         aug_type = None,
         cll_type='random',
-        noise=False
+        noise=False,
+        transition_matrix=None
     ):
         self.root = root
         self.data_type = data_type
@@ -196,6 +197,7 @@ class CLCIFAR10(VisionDataset, BaseDataset):
         self.setup_type = setup_type
         self.cll_type = cll_type
         self.noise = noise
+        self.transition_matrix = transition_matrix
         self.dataset_name = "CIFAR10"  # Add dataset name attribute
         # self.image_predictor = create_predictor(device=torch.device('cuda:1'),mode='most', debug=False, noise=self.noise)
 
@@ -243,9 +245,12 @@ class CLCIFAR10(VisionDataset, BaseDataset):
         self.data = self.data.transpose((0, 2, 3, 1))  # convert to HWC
 
         if self.data_type =="train":
-            if self.imb_type is not None:
+            if self.imb_type is not None and self.imb_factor < 1.0:
                 self.img_num_list, self.img_max = self.get_img_num_per_cls(self.num_classes, self.imb_type, self.imb_factor)
                 self.gen_imbalanced_data(self.img_num_list)
+                print("Done: Generate imbalanced data")
+            else:
+                self.img_max =  len(self.data) / self.num_classes
             
             if max_train_samples: #limit the size of the training dataset to max_train_samples
                 train_len = min(len(self.data), max_train_samples)
@@ -256,6 +261,10 @@ class CLCIFAR10(VisionDataset, BaseDataset):
                 self.gen_complementary_target()
             elif self.setup_type == "setup 2":
                 self.gen_bias_complementary_label()
+            elif self.setup_type == "transition_matrix":
+                if self.transition_matrix is None:
+                    raise ValueError("transition_matrix must be provided for setup_type 'transition_matrix'")
+                self.generate_cl_from_matrix(self.transition_matrix)
 
             # if self.setup_type == "transition_bias":
             #     self.gen_bias_complementary_label()
@@ -493,7 +502,8 @@ class CLCIFAR100(CLCIFAR10):
         setup_type=None,
         aug_type = None,
         cll_type='random',
-        noise=False
+        noise=False,
+        transition_matrix=None
     ):
         self.data_type = data_type
         self.num_classes = 100
@@ -507,6 +517,7 @@ class CLCIFAR100(CLCIFAR10):
         self.setup_type = setup_type
         self.cll_type = cll_type
         self.noise = noise
+        self.transition_matrix = transition_matrix
         self.dataset_name = "CIFAR100"  # Add dataset name attribute
 
         self.train = train
@@ -553,9 +564,12 @@ class CLCIFAR100(CLCIFAR10):
         self.data = self.data.transpose((0, 2, 3, 1))  # convert to HWC
 
         if self.data_type =="train":
-            if self.imb_type is not None:
+            if self.imb_type is not None and self.imb_factor < 1.0:
                 self.img_num_list, self.img_max = self.get_img_num_per_cls(self.num_classes, self.imb_type, self.imb_factor)
                 self.gen_imbalanced_data(self.img_num_list)
+
+            else:
+                self.img_max =  len(self.data) / self.num_classes
             
             if max_train_samples: #limit the size of the training dataset to max_train_samples
                 train_len = min(len(self.data), max_train_samples)
@@ -713,7 +727,8 @@ class CLCIFAR20(CLCIFAR100):
         setup_type=None,
         aug_type = None,
         cll_type='random',
-        noise=False
+        noise=False,
+        transition_matrix=None
     ):
         self.data_type = data_type
         self.num_classes = 20
@@ -727,6 +742,7 @@ class CLCIFAR20(CLCIFAR100):
         self.setup_type = setup_type
         self.cll_type = cll_type
         self.noise = noise
+        self.transition_matrix = transition_matrix
         self.dataset_name = "CIFAR20"  # Add dataset name attribute
 
         self.train = train
@@ -775,9 +791,12 @@ class CLCIFAR20(CLCIFAR100):
         self.data = self.data.transpose((0, 2, 3, 1))  # convert to HWC
 
         if self.data_type =="train":
-            if self.imb_type is not None:
+            if self.imb_type is not None and self.imb_factor < 1.0:
                 self.img_num_list, self.img_max = self.get_img_num_per_cls(self.num_classes, self.imb_type, self.imb_factor)
                 self.gen_imbalanced_data(self.img_num_list)
+
+            else:
+                self.img_max =  len(self.data) / self.num_classes
             
             if max_train_samples: #limit the size of the training dataset to max_train_samples
                 train_len = min(len(self.data), max_train_samples)

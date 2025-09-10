@@ -70,13 +70,39 @@ def train_icm(args):
 
     weights, pretrain = weighting_calculation(input_dataset, imb_factor, n_weight)
 
+    # Load transition matrix if specified
+    transition_matrix = None
+    if setup_type == "transition_matrix":
+        # Auto-determine transition matrix file path based on parameters
+        if args.transition_matrix is None:
+            # Build filename 
+            dataset_lower = input_dataset.lower()
+            matrix_filename = f"transition_matrix/{dataset_lower}/{cll_type}.txt"
+            matrix_path = matrix_filename
+        else:
+            matrix_path = args.transition_matrix
+        
+        if not os.path.exists(matrix_path):
+            raise FileNotFoundError(f"Transition matrix file not found: {matrix_path}")
+        
+        print(f"Loading transition matrix from: {matrix_path}")
+        if matrix_path.endswith('.npy'):
+            transition_matrix = np.load(matrix_path)
+        elif matrix_path.endswith('.txt'):
+            transition_matrix = np.loadtxt(matrix_path)
+        else:
+            raise ValueError("Transition matrix file must be .npy or .txt format")
+        
+        print(f"Loaded transition matrix with shape: {transition_matrix.shape}")
+        # print(f"Row sums: {transition_matrix.sum(axis=1)}")
+
     print("Use prepare_cluster_dataset")
     train_data = "train"
     trainset, input_dim, num_classes = prepare_cluster_dataset(input_dataset=input_dataset, data_type=train_data, kmean_cluster=k_cluster, max_train_samples=None, multi_label=False, 
-                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, setup_type=setup_type, aug_type=aug_type, cll_type=cll_type, noise=noise)
+                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, setup_type=setup_type, aug_type=aug_type, cll_type=cll_type, noise=noise, transition_matrix=transition_matrix)
     test_data = "test"
     testset, input_dim, num_classes = prepare_cluster_dataset(input_dataset=input_dataset, data_type=test_data, kmean_cluster=k_cluster, max_train_samples=None, multi_label=False, 
-                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, setup_type=setup_type, cll_type=cll_type, noise=noise)
+                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, setup_type=setup_type, cll_type=cll_type, noise=noise, transition_matrix=None)
 
     dataset_T, class_count = get_dataset_T(trainset, num_classes)
 
@@ -133,6 +159,9 @@ def train_icm(args):
     # Ensure the logs directory exists
     os.makedirs("logs", exist_ok=True)
 
+    # breakpoint()
+    
+
     for epoch in range(0, epochs):
         # learning_rate = adjust_learning_rate(epochs, epoch, lr)
         learning_rate = lr
@@ -172,8 +201,8 @@ def train_icm(args):
             inputs, labels, true_labels, k_mean_targets = inputs.to(device), labels.to(device), true_labels.to(device), k_mean_targets.to(device)
 
             # Ha comment 31/08/2025
-            breakpoint()
-            classes, class_counts = np.unique(labels.cpu().numpy(), return_counts=True)
+            # breakpoint()
+            # classes, class_counts = np.unique(labels.cpu().numpy(), return_counts=True)
 
             # pdb.set_trace()
 
@@ -667,7 +696,8 @@ if __name__ == "__main__":
 
     setup_list = [
         "setup 1",
-        "setup 2"
+        "setup 2",
+        "transition_matrix"
     ]
 
     aug_type = [
@@ -718,9 +748,10 @@ if __name__ == "__main__":
     parser.add_argument('--alpha', type=float, default=1.0)
     parser.add_argument('--transition_bias', type=float, default=1.0)
     parser.add_argument('--setup_type', type=str, choices=setup_list, help='problem setup', default='setup 1')
+    parser.add_argument('--transition_matrix', type=str, default=None, help='Path to transition matrix file (.npy or .txt). If not provided, will auto-load from transition_matrix/{cll_type}_{algo}_{dataset}.txt')
     parser.add_argument('--new_data_aug', type=str, choices=new_data_aug, help='choose new data aug method', default='none')
     parser.add_argument('--aug_type', type=str, choices=aug_type, help='augmentation type', default='flipflop')
-    parser.add_argument('--cll_type', type=str, choices=['random', 'least', 'most', 'most_no_noise'], help='complementary label type', default='random')
+    parser.add_argument('--cll_type', type=str, choices=['random', 'least', 'most', 'most_no_noise', 'bias_most', 'bias_least', 'bias_random'], help='complementary label type', default='random')
     parser.add_argument('--gpu', type=int, choices=[0, 1, 2, 3], help='GPU to use for training', default=1)
     parser.add_argument('--noise', type=bool, default=False, help='Whether to use noise in the training dataset')
 

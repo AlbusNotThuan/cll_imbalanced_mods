@@ -1,0 +1,1 @@
+python train.py --algo=cpe-f --dataset_name CIFAR10 --model resnet18 --imb_type exp --imb_factor 1  --data_aug true --aug_type flipflop --cll_type bias_most --gpu 0

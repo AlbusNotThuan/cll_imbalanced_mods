@@ -205,7 +205,7 @@ class ImagePredictor:
         # Prepare results based on mode
         if self.mode == 'most':
             results = {
-                'predicted_class': self._get_nth_highest_class(probs_array, 1),
+                'predicted_class': self._get_second_highest_class(probs_array),
             }
         elif self.mode == 'least':
             results = {
@@ -287,39 +287,40 @@ class ImagePredictor:
     def _get_nth_highest_class(self, probabilities, n):
         """
         Get the nth highest class with configurable true label removal.
-
+        
         Args:
             probabilities (np.ndarray): Array of class probabilities.
             n (int): The rank of the class to retrieve (1-based, e.g., 1 for highest).
-
+        
         Returns:
             int: Index of the nth highest class, or -1 if n is out of bounds.
         """
-        # Create a dictionary of {class_index: probability}
-        prob_dict = {i: prob for i, prob in enumerate(probabilities)}
+        available_classes = list(range(10))
 
-        # Remove the true label from the dictionary if noise is False
-        if not self.noise and hasattr(self, 'true_label') and self.true_label in prob_dict:
-            del prob_dict[self.true_label]
-        
-        # Sort the remaining items by probability in descending order
-        # The result is a list of (class_index, probability) tuples
-        sorted_classes = sorted(prob_dict.items(), key=lambda item: item[1], reverse=True)
-
-        # Check if n is within the bounds of the remaining classes
-        if 1 <= n <= len(sorted_classes):
-            # Return the class index of the nth highest probability
-            nth_highest_class = sorted_classes[n-1][0]
+        if not self.noise and hasattr(self, 'true_label'):
+            if self.true_label in available_classes:
+                available_classes.remove(self.true_label)
             if self.debug:
-                if not self.noise and hasattr(self, 'true_label'):
-                    print(f"🔧 DEBUG: After removing true label {self.true_label}, the {n}-th highest class is {nth_highest_class}")
-                else:
-                    print(f"🔧 DEBUG: The {n}-th highest class is {nth_highest_class}")
+                print(f"🔧 DEBUG: Removed true label {self.true_label} from consideration.")
+
+        if not available_classes:
+            return -1
+
+        prob_dict = {c: probabilities[c] for c in available_classes}
+        
+        sorted_classes = sorted(prob_dict.items(), key=lambda item: item[1], reverse=True)
+        
+        # When noise=True, return n+1 label since highest is likely true label
+        target_n = n + 1 if self.noise else n
+        
+        if 1 <= target_n <= len(sorted_classes):
+            nth_highest_class = sorted_classes[target_n-1][0]
+            if self.debug:
+                print(f"🔧 DEBUG: {target_n}-th highest class: {nth_highest_class}")
             return nth_highest_class
         else:
-            # n is out of bounds (e.g., asking for the 10th highest from 9 classes)
             if self.debug:
-                warnings.warn(f"Warning: n={n} is out of bounds for the remaining {len(sorted_classes)} classes.")
+                warnings.warn(f"Warning: target_n={target_n} is out of bounds for {len(sorted_classes)} available classes.")
             return -1
         
     def get_model_info(self):
