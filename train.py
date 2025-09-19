@@ -72,19 +72,33 @@ def train_icm(args):
 
     # Load transition matrix if specified
     transition_matrix = None
-    if setup_type == "transition_matrix":
+    # import pdb
+    # pdb.set_trace()
+
+    # Case: Dbar[prompt]_T or Dbar_T[prompt] or transition_matrix
+    # These cases are using different matrix from the derivation from the training dataset
+    # Original transition matrix is equilvalent to Dbar[prompt]_T
+    if setup_type in ["transition_matrix", "Dbar_T[prompt]", "Dbar[prompt]_T", "Dbar[prompt]_T[prompt]"]:
         # Auto-determine transition matrix file path based on parameters
+        # Define matrix file for 2 cases: Dbar[prompt]_T and Dbar_T[prompt]
+        matrix_filename = (
+            cll_type if setup_type in ["Dbar[prompt]_T", "Dbar[prompt]_T[prompt]"] 
+            else "most[prompt]" if cll_type=="most" 
+            else "least[prompt]" if cll_type=="least" 
+            else cll_type
+        ) 
         if args.transition_matrix is None:
             # Build filename 
             dataset_lower = input_dataset.lower()
-            matrix_filename = f"transition_matrix/{dataset_lower}/{cll_type}.txt"
+            matrix_filename = f"transition_matrix/{dataset_lower}/{matrix_filename}.txt"
             matrix_path = matrix_filename
         else:
             matrix_path = args.transition_matrix
         
         if not os.path.exists(matrix_path):
             raise FileNotFoundError(f"Transition matrix file not found: {matrix_path}")
-        
+
+        print("Matrix used for generating training dataset, not to be used as Q in the algorithm") if setup_type in ["Dbar[prompt]_T", "Dbar[prompt]_T[prompt]"] else print("Matrix used as Q in the algorithm")
         print(f"Loading transition matrix from: {matrix_path}")
         if matrix_path.endswith('.npy'):
             transition_matrix = np.load(matrix_path)
@@ -104,7 +118,9 @@ def train_icm(args):
     testset, input_dim, num_classes = prepare_cluster_dataset(input_dataset=input_dataset, data_type=test_data, kmean_cluster=k_cluster, max_train_samples=None, multi_label=False, 
                                     augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, setup_type=setup_type, cll_type=cll_type, noise=noise, transition_matrix=None)
 
-    dataset_T, class_count = get_dataset_T(trainset, num_classes)
+    if algo in ["fwd-u", "fwd-int", "fwd-r", "cpe-f", "cpe-t", "ure-ga"]:
+        dataset_T, class_count = get_dataset_T(trainset, num_classes)
+        class_count = torch.tensor(class_count, dtype=torch.float).to(device)
 
     # Debug
     print(f"Number of training samples: {len(trainset)}")
@@ -121,7 +137,10 @@ def train_icm(args):
 
     elif algo in ["cpe-f", "cpe-t"]:
         dataset_T = torch.tensor(dataset_T, dtype=torch.float).to(device)
-        Q = dataset_T
+        if setup_type == "Dbar_T[prompt]" or setup_type == "Dbar[prompt]_T":
+            Q = torch.tensor(transition_matrix, dtype=torch.float).to(device)
+        else: 
+            Q = dataset_T
 
     elif algo == "fwd-int":
         # Print the complementary label distribution T
@@ -131,10 +150,17 @@ def train_icm(args):
             U[i][i] = 0
         alpha_Q = 0.0
         dataset_T, class_count = get_dataset_T(trainset, num_classes)
-        Q = torch.tensor(alpha_Q * U + (1-alpha_Q) * dataset_T).to(device).float()
+
+        if setup_type == "Dbar_T[prompt]" or setup_type == "Dbar[prompt]_T":
+            # Q = torch.tensor(dataset_T, dtype=torch.float).to(device)
+            Q = torch.tensor(transition_matrix, dtype=torch.float).to(device)
+        else:
+            Q = torch.tensor(alpha_Q * U + (1-alpha_Q) * dataset_T).to(device).float()
         dataset_T = torch.tensor(dataset_T, dtype=torch.float).to(device)
 
-    class_count = torch.tensor(class_count, dtype=torch.float).to(device)
+    # import pdb
+    # pdb.set_trace()
+
     trainloader = DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=num_workers, drop_last=True)
     testloader = DataLoader(testset, batch_size=batch_size, shuffle=False, num_workers=num_workers, drop_last=True)
 
@@ -154,7 +180,7 @@ def train_icm(args):
         Q_param = torch.nn.Parameter(Q.log(), requires_grad=True)
         model.register_parameter(name="Q", param=Q_param)
 
-    wandb.login()
+    wandb.login(key="34c0326efeca580933e7197c24ed98c4512659e7")
     wandb.init(project=args.dataset_name, name=f"{algo}-{dataset_name}-{imb_factor}-{lr}-{weight_decay}-{epochs}-{aug_type}-{new_data_aug}", config={"lr": lr, "weight_decay": weight_decay, "epochs": epochs, "aug_type": aug_type, "algo": algo, "new_data_aug": new_data_aug}, tags=[str(imb_factor)])
     # Ensure the logs directory exists
     os.makedirs("logs", exist_ok=True)
@@ -555,9 +581,9 @@ def train_nn(args):
     elif args.model == "m-resnet18":
         model = get_modified_resnet18(num_classes, input).to(device)
     elif args.model == "mlp":
-        model = MLP(input_dim=input_dim,hidden_dim=args.hidden_dim,num_classes=num_classes).to(device)
+        model = MLP(input_dim=input_dim, hidden_dim=args.hidden_dim, num_classes=num_classes).to(device)
     elif args.model == "linear":
-        model = Linear(input_dim=input_dim,num_classes=num_classes).to(device)
+        model = Linear(input_dim=input_dim, num_classes=num_classes).to(device)
     else:
         raise NotImplementedError
 
@@ -697,7 +723,11 @@ if __name__ == "__main__":
     setup_list = [
         "setup 1",
         "setup 2",
-        "transition_matrix"
+        "transition_matrix",
+        "Dbar_T[prompt]",
+        "Dbar[prompt]_T",
+        "Dbar[prompt]_T[prompt]",    
+        "Dbar_T"
     ]
 
     aug_type = [
@@ -728,8 +758,8 @@ if __name__ == "__main__":
     parser.add_argument('--evaluate_step', type=int, default=10)
     parser.add_argument("--hidden_dim", type=int, default=500)
     parser.add_argument('--k_cluster', type=int, default=0)
-    parser.add_argument('--n_epoch', type=int, default=300)
-    parser.add_argument('--warm_epoch', type=int, default=240)
+    parser.add_argument('--n_epoch', type=int, default=160)
+    parser.add_argument('--warm_epoch', type=int, default=128)
     parser.add_argument('--batch_size', type=int, default=512)
     parser.add_argument('--multi_label', action='store_true')
     parser.add_argument('--imb_type', type=str, default=None)
@@ -748,10 +778,10 @@ if __name__ == "__main__":
     parser.add_argument('--alpha', type=float, default=1.0)
     parser.add_argument('--transition_bias', type=float, default=1.0)
     parser.add_argument('--setup_type', type=str, choices=setup_list, help='problem setup', default='setup 1')
-    parser.add_argument('--transition_matrix', type=str, default=None, help='Path to transition matrix file (.npy or .txt). If not provided, will auto-load from transition_matrix/{cll_type}_{algo}_{dataset}.txt')
+    parser.add_argument('--transition_matrix', type=str, default=None, help='Path to transition matrix file (.npy or .txt). If not provided, will auto-load from transition_matrix/')
     parser.add_argument('--new_data_aug', type=str, choices=new_data_aug, help='choose new data aug method', default='none')
     parser.add_argument('--aug_type', type=str, choices=aug_type, help='augmentation type', default='flipflop')
-    parser.add_argument('--cll_type', type=str, choices=['random', 'least', 'most', 'most_no_noise', 'bias_most', 'bias_least', 'bias_random'], help='complementary label type', default='random')
+    parser.add_argument('--cll_type', type=str, choices=['random', 'least', 'most', 'most_no_noise', 'bias_most', 'bias_least', 'bias_random', 'from_matrix_least', 'from_matrix_most'], help='complementary label type', default='random')
     parser.add_argument('--gpu', type=int, choices=[0, 1, 2, 3], help='GPU to use for training', default=1)
     parser.add_argument('--noise', type=bool, default=False, help='Whether to use noise in the training dataset')
 

@@ -245,6 +245,8 @@ class CLCIFAR10(VisionDataset, BaseDataset):
         self.data = self.data.transpose((0, 2, 3, 1))  # convert to HWC
 
         if self.data_type =="train":
+            # import pdb
+            # pdb.set_trace()
             if self.imb_type is not None and self.imb_factor < 1.0:
                 self.img_num_list, self.img_max = self.get_img_num_per_cls(self.num_classes, self.imb_type, self.imb_factor)
                 self.gen_imbalanced_data(self.img_num_list)
@@ -261,10 +263,16 @@ class CLCIFAR10(VisionDataset, BaseDataset):
                 self.gen_complementary_target()
             elif self.setup_type == "setup 2":
                 self.gen_bias_complementary_label()
-            elif self.setup_type == "transition_matrix":
-                if self.transition_matrix is None:
-                    raise ValueError("transition_matrix must be provided for setup_type 'transition_matrix'")
+            elif self.setup_type == "transition_matrix" or self.setup_type == "Dbar[prompt]_T" or self.setup_type == "Dbar[prompt]_T[prompt]":
+                print("Using Dbar[prompt]")
+                # if self.transition_matrix is None:
+                #     raise ValueError("transition_matrix must be provided for setup_type 'transition_matrix'")
                 self.generate_cl_from_matrix(self.transition_matrix)
+            elif self.setup_type == "Dbar_T[prompt]" or self.setup_type == "Dbar_T":
+                print("Using Dbar")
+                self.gen_complementary_target()
+                
+
 
             # if self.setup_type == "transition_bias":
             #     self.gen_bias_complementary_label()
@@ -791,10 +799,12 @@ class CLCIFAR20(CLCIFAR100):
         self.data = self.data.transpose((0, 2, 3, 1))  # convert to HWC
 
         if self.data_type =="train":
+            # import pdb
+            # pdb.set_trace()
             if self.imb_type is not None and self.imb_factor < 1.0:
                 self.img_num_list, self.img_max = self.get_img_num_per_cls(self.num_classes, self.imb_type, self.imb_factor)
                 self.gen_imbalanced_data(self.img_num_list)
-
+                print("Done: Generate imbalanced data")
             else:
                 self.img_max =  len(self.data) / self.num_classes
             
@@ -802,11 +812,20 @@ class CLCIFAR20(CLCIFAR100):
                 train_len = min(len(self.data), max_train_samples)
                 self.data = self.data[:train_len]
                 self.targets = self.targets[:train_len]
-
+            
             if self.setup_type == "setup 1":
                 self.gen_complementary_target()
             elif self.setup_type == "setup 2":
                 self.gen_bias_complementary_label()
+            elif self.setup_type == "transition_matrix" or self.setup_type == "Dbar[prompt]_T" or self.setup_type == "Dbar[prompt]_T[prompt]":
+                print("Using Dbar[prompt]")
+                # if self.transition_matrix is None:
+                #     raise ValueError("transition_matrix must be provided for setup_type 'transition_matrix'")
+                self.generate_cl_from_matrix(self.transition_matrix)
+            elif self.setup_type == "Dbar_T[prompt]" or self.setup_type == "Dbar_T":
+                print("Using Dbar")
+                self.gen_complementary_target()
+                
         
         self.idx_train = len(self.data)
         self.mean, self.std = [0.5071, 0.4865, 0.4409], [0.2673, 0.2564, 0.2762]

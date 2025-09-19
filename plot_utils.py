@@ -74,115 +74,92 @@ def load_data_file(filename):
     
     return data
 
-def plot_dataframe_distributions(df_dict=None, candidate_names=None, max_unique_for_bars=50, figsize_per_col=5):
+def plot_dataframe_distributions(df_combined=None, figsize_per_col=5):
     """
-    Plot histograms/count plots for multiple DataFrames and their columns.
+    Plot histograms for each column in df_combined.
     
     Args:
-        df_dict (dict, optional): Dictionary of {name: dataframe} to plot. 
-                                 If None, will search globals() for candidate_names.
-        candidate_names (list, optional): List of DataFrame variable names to search for in globals().
-                                       Default: ['df_random', 'df_most', 'df_least', 'df_most_no_noise', 'df_combined']
-        max_unique_for_bars (int): Maximum number of unique values to use bar plots instead of histograms.
+        df_combined (pd.DataFrame, optional): DataFrame to plot. If None, will look for 'df_combined' in globals().
         figsize_per_col (int): Width in inches per subplot column.
     
     Example usage:
-        # Use with explicit dataframes
-        plot_dataframe_distributions({'my_data': df1, 'other_data': df2})
+        # Use with explicit dataframe
+        plot_dataframe_distributions(df_combined)
         
         # Use with automatic detection from globals
         plot_dataframe_distributions()
-        
-        # Use with custom candidate names
-        plot_dataframe_distributions(candidate_names=['df_cifar10', 'df_cifar20', 'df_cifar100'])
     """
     
-    # Default candidate names if not provided
-    if candidate_names is None:
-        candidate_names = [
-            'df_random', 'df_most', 'df_least', 'df_most_no_noise', 'df_combined',
-            'df_random_100', 'df_most_100', 'df_least_100', 'df_combined_100'
-        ]
+    # Get df_combined either from parameter or globals
+    if df_combined is None:
+        if 'df_combined' in globals() and isinstance(globals()['df_combined'], pd.DataFrame):
+            df_combined = globals()['df_combined']
+        else:
+            print("❌ No df_combined found. Please provide a DataFrame or ensure 'df_combined' exists in globals().")
+            return
     
-    # Get dataframes either from provided dict or by searching globals
-    if df_dict is None:
-        available_dfs = {
-            name: globals()[name] 
-            for name in candidate_names 
-            if name in globals() and isinstance(globals()[name], pd.DataFrame)
-        }
-    else:
-        # Validate that all provided objects are DataFrames
-        available_dfs = {
-            name: df 
-            for name, df in df_dict.items() 
-            if isinstance(df, pd.DataFrame)
-        }
-    
-    if not available_dfs:
-        print("No target DataFrames found.")
+    if not isinstance(df_combined, pd.DataFrame):
+        print("❌ Provided data is not a pandas DataFrame.")
         return
     
-    print(f"📊 Plotting distributions for {len(available_dfs)} DataFrames: {list(available_dfs.keys())}")
+    cols = df_combined.columns.tolist()
+    if not cols:
+        print("⚠️ DataFrame is empty, nothing to plot.")
+        return
     
-    for name, df in available_dfs.items():
-        cols = df.columns.tolist()
-        if not cols:
-            print(f"⚠️ {name} is empty, skipping.")
-            continue
+    print(f"� Plotting histograms for df_combined")
+    print(f"   Shape: {df_combined.shape}")
+    print(f"   Columns: {cols}")
+    
+    # Create separate plots for each column
+    for col in cols:
+        series = df_combined[col].dropna()
         
-        print(f"\n🔍 Analyzing DataFrame: {name}")
-        print(f"   Shape: {df.shape}")
-        print(f"   Columns: {cols}")
+        # Create individual figure for this column
+        plt.figure(figsize=(figsize_per_col, 4), dpi=300)
         
-        # Create subplots (one plot per dataframe column)
-        n_cols = len(cols)
-        # Use high DPI for publication-quality / high-resolution images
-        fig, axes = plt.subplots(1, n_cols, figsize=(figsize_per_col * n_cols, 4), dpi=300, constrained_layout=True)
-        if n_cols == 1:
-            axes = [axes]
-        
-        for ax, col in zip(axes, cols):
-            series = df[col].dropna()
-            nunique = series.nunique()
+        if len(series) == 0:
+            plt.text(0.5, 0.5, f'No data in {col}', ha='center', va='center', transform=plt.gca().transAxes)
+            plt.title(f"{col} (empty)")
+        else:
+            # Use bar plot to show all classes with counts on top
+            value_counts = series.value_counts().sort_index()
             
-            if len(series) == 0:
-                ax.text(0.5, 0.5, f'No data\nin {col}', ha='center', va='center', transform=ax.transAxes)
-                ax.set_title(f"{col} (empty)")
-                continue
+            # Ensure all classes from 0 to max are shown (fill missing with 0)
+            if len(value_counts) > 0:
+                min_class = int(value_counts.index.min())
+                max_class = int(value_counts.index.max())
+                all_classes = list(range(min_class, max_class + 1))
+                value_counts = value_counts.reindex(all_classes, fill_value=0)
             
-            # Choose plot type based on number of unique values
-            if nunique <= max_unique_for_bars:
-                # Categorical/discrete: use bar plot of value counts
-                vc = series.value_counts().sort_index()
-                bars = sns.barplot(x=[str(x) for x in vc.index], y=vc.values, ax=ax, palette='pastel')
-                ax.set_xlabel("Value")
-                ax.set_ylabel("Count")
-                ax.set_title(f"{col}\n({nunique} unique values)")
-                ax.tick_params(axis='x', rotation=45)
-                
-                # Add value labels on bars if not too many
-                if len(vc) <= 20:
-                    for i, (idx, val) in enumerate(vc.items()):
-                        ax.text(i, val + max(vc) * 0.01, str(val), ha='center', va='bottom', fontsize=9)
-            else:
-                # Continuous-like: use histogram
-                sns.histplot(series, bins=min(50, nunique//2), kde=False, ax=ax, color='steelblue', alpha=0.7)
-                ax.set_xlabel(col)
-                ax.set_ylabel("Count")
-                ax.set_title(f"{col}\n({nunique} unique values)")
+            # Create bar plot
+            bars = plt.bar(value_counts.index, value_counts.values, color='steelblue', alpha=0.7)
+            
+            # Add count labels on top of each bar
+            for i, (class_label, count) in enumerate(value_counts.items()):
+                if count > 0:  # Only show label if count > 0
+                    plt.text(class_label, count + max(value_counts.values) * 0.01, 
+                            str(count), ha='center', va='bottom', fontsize=9)
+            
+            plt.xlabel(col)
+            plt.ylabel("Count")
+            plt.title(f"{col}\n({len(value_counts)} classes, {series.nunique()} with data)")
+            
+            # Set x-axis to show all class labels
+            plt.xticks(value_counts.index)
         
+        plt.tight_layout()
         plt.show()
-        
-        # Print summary statistics
-        print(f"   📈 Summary for {name}:")
-        for col in cols:
-            series = df[col].dropna()
-            if len(series) > 0:
-                print(f"      {col}: {len(series)} values, {series.nunique()} unique, range [{series.min()}-{series.max()}]")
-            else:
-                print(f"      {col}: No data")
-        print("-" * 50)
+    
+    # Print summary statistics
+    print(f"📈 Summary for df_combined:")
+    for col in cols:
+        series = df_combined[col].dropna()
+        if len(series) > 0:
+            print(f"   {col}: {len(series)} values, {series.nunique()} unique, range [{series.min()}-{series.max()}]")
+        else:
+            print(f"   {col}: No data")
+    print("-" * 50)
 
 
 def analyze_wandb_run(run_id):
@@ -446,7 +423,7 @@ if __name__ == "__main__":
         # You can change the filename for each run.
         plot_learning_curves(extracted_metrics, output_filename="first_training_run.png")
 
-def plot_transition_matrices(df, true_col='true', figsize=(8, 6), dpi=300, include_missing_values=True):
+def plot_transition_matrices(df, true_col='true', figsize=(8, 6), dpi=300, include_missing_values=True, savepath=None):
     """
     Plot transition matrices for all columns vs a reference 'true' column in a DataFrame.
     
@@ -456,6 +433,9 @@ def plot_transition_matrices(df, true_col='true', figsize=(8, 6), dpi=300, inclu
         figsize (tuple): Figure size for each heatmap. Default: (8, 6)
         dpi (int): DPI for high-resolution plots. Default: 300
         include_missing_values (bool): Whether to include missing categorical values with zero counts
+        savepath (str): Path to save the transition matrix as a txt file. Default: None (no saving)
+                       If multiple prediction columns exist, column names will be appended to filename.
+                       Example: 'matrix.txt' becomes 'matrix_most.txt', 'matrix_least.txt', etc.
         
     Returns:
         dict: Dictionary containing transition counts and proportions for each column
@@ -469,6 +449,13 @@ def plot_transition_matrices(df, true_col='true', figsize=(8, 6), dpi=300, inclu
         
         # For CIFAR-20/100 with many classes, use larger figures
         results = plot_transition_matrices(df_combined, figsize=(12, 10))
+        
+        # Save transition matrix to file
+        results = plot_transition_matrices(df_combined, savepath='transition_matrix_output.txt')
+        
+        # Save with multiple columns (creates multiple files with column names appended)
+        results = plot_transition_matrices(df_combined, savepath='matrices/transition_matrix.txt')
+        # Creates: matrices/transition_matrix_most.txt, matrices/transition_matrix_least.txt, etc.
     """
     
     if true_col not in df.columns:
@@ -551,6 +538,19 @@ def plot_transition_matrices(df, true_col='true', figsize=(8, 6), dpi=300, inclu
         
         print(f"\nRow-normalized proportions P({col}|{true_col}):")
         print(transition_props[col].round(3))
+        
+        # Save transition matrix to file if savepath is provided
+        if savepath is not None and not transition_props[col].empty:
+            try:
+                actual_savepath = f"{savepath}/{col}.txt" if len(pred_cols) > 1 else savepath
+                
+                # Save as space-delimited text file (like the existing transition matrix files)
+                np.savetxt(actual_savepath, transition_props[col].values, fmt='%.6f')
+                print(f"💾 Transition matrix saved to: {actual_savepath}")
+                print(f"   Matrix shape: {transition_props[col].shape}")
+                print(f"   File format: Space-delimited text file with 6 decimal places")
+            except Exception as e:
+                print(f"❌ Error saving transition matrix to {actual_savepath}: {e}")
         
         # Create heatmap if we have valid data
         if not transition_props[col].empty and transition_props[col].size > 0:

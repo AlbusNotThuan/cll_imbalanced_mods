@@ -26,9 +26,31 @@ class BaseDataset:
                 ) # generates new complementary target values for each original target value
                 for i in range(len(self.targets))
             ]
-        elif self.cll_type in ['least', 'most', 'most_no_noise']:
+            
+            # Save generated labels to file
+            dataset_type = getattr(self, 'dataset_name', 'CIFAR10')
+            organized_file_path = f"generated_labels/{dataset_type.lower()}/{self.cll_type}.txt"
+            os.makedirs(f"generated_labels/{dataset_type.lower()}", exist_ok=True)
+            with open(organized_file_path, 'w') as f:
+                for label in self.targets:
+                    if isinstance(label, np.ndarray):
+                        f.write(f"array([{label[0]}])\n")
+                    else:
+                        f.write(f"array([{label}])\n")
+            print(f"Saved {len(self.targets)} {self.cll_type} complementary labels to {organized_file_path}")
+        elif self.cll_type in ['least', 'most', 'most_no_noise', 'from_matrix_least', 'from_matrix_most']:
             # Use image predictor based on dataset type
             from imb_cll.utils.image_predictor import create_predictor
+
+            # if self.cll_type in ['from_matrix_least']: self.cll_type = 'least'
+            # if self.cll_type in ['from_matrix_most']: self.cll_type = 'most'
+
+            # Switch cases for training dataset generated from pretrained model and specific transition matrix
+            # This is for 2 cases: Dbar and Dbar[prompt]
+            # Determine label filename for 2 cases: Dbar_T and Dbar[prompt]_T[prompt]
+            label_filename = (
+                self.cll_type
+            )
             
             # Determine dataset type
             dataset_type = getattr(self, 'dataset_name', 'CIFAR10')
@@ -36,24 +58,23 @@ class BaseDataset:
             # Set noise flag based on mode
             noise_flag = (self.cll_type == 'most_no_noise')
             
-            self.image_predictor = create_predictor(
-                device=torch.device('cuda:0'), 
-                mode=self.cll_type if self.cll_type != 'most_no_noise' else 'most',
-                debug=False, 
-                noise=noise_flag,
-                dataset_type=dataset_type
-            )
-            
-            print(f"Using image predictor type: {self.cll_type} for dataset: {dataset_type}")
-            
             # Check if labels already exist in organized structure
-            organized_file_path = f"generated_labels/{dataset_type.lower()}/{self.cll_type}.txt"
+            organized_file_path = f"generated_labels/{dataset_type.lower()}/{label_filename}.txt"
             if os.path.exists(organized_file_path):
                 print(f"Loading {self.cll_type} complementary labels from {organized_file_path}")
                 with open(organized_file_path, 'r') as f:
                     content = f.read().strip()
             else:
                 print(f"Generating {self.cll_type} complementary labels for {dataset_type}...")
+                print(f"Using image predictor type: {self.cll_type} for dataset: {dataset_type}")
+                self.image_predictor = create_predictor(
+                    device=torch.device('cuda:0'), 
+                    mode=self.cll_type if self.cll_type != 'most_no_noise' else 'most',
+                    debug=False, 
+                    noise=noise_flag,
+                    dataset_type=dataset_type
+                )
+                
                 # Generate new labels
                 generated_labels = []
                 for i in range(len(self.targets)):
@@ -166,6 +187,14 @@ class BaseDataset:
                 for i in range(len(self.targets))
             ]
             print(f"Applied {self.cll_type} mapping to {len(self.targets)} labels")
+            
+            # Save generated labels to file
+            organized_file_path = f"generated_labels/{dataset_type.lower()}/{self.cll_type}.txt"
+            os.makedirs(f"generated_labels/{dataset_type.lower()}", exist_ok=True)
+            with open(organized_file_path, 'w') as f:
+                for label in self.targets:
+                    f.write(f"array([{label[0]}])\n")
+            print(f"Saved {len(self.targets)} {self.cll_type} complementary labels to {organized_file_path}")
 
         pdb.set_trace()
 
@@ -289,6 +318,7 @@ class BaseDataset:
                                  Row sums should equal 1, diagonal elements can be non-zero
         """
         print("Generating complementary labels from transition matrix...")
+        
         num_classes = self.num_classes
         if transition_matrix.shape != (num_classes, num_classes):
             raise ValueError(f"Transition matrix must have shape ({num_classes}, {num_classes})")
@@ -308,15 +338,32 @@ class BaseDataset:
         np.random.seed(self.seed)
         self.true_targets = copy.deepcopy(self.targets)
         self.k_mean_targets = copy.deepcopy(self.targets)
+
+        # import pdb
+        # pdb.set_trace()
         
         new_targets = []
-        for true_label in self.targets:
-            prob = T[true_label, :]
+        for target in self.targets:
+            prob = T[target, :]
             # Sample one label based on the probability distribution
             cl_label = np.random.choice(np.arange(num_classes), p=prob)
             new_targets.append(np.array([cl_label]))
         
         self.targets = new_targets
+        # import pdb
+        # pdb.set_trace()
+        
+        # Save the generated labels to file
+        dataset_type = getattr(self, 'dataset_name', 'CIFAR10')
+        save_dir = os.path.join(os.getcwd(), 'generated_labels', dataset_type.lower())
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, f'{self.cll_type}[prompt].txt')
+
+        # Convert list of arrays to a single array for saving
+        labels_to_save = np.array([label[0] for label in new_targets])
+        np.savetxt(save_path, labels_to_save, fmt='%d')
+        print(f"Saved transition matrix generated labels to: {save_path}")
+        
         print(f"Done generating complementary labels from transition matrix. Generated {len(new_targets)} labels.")
 
     def get_cls_num_list(self):
