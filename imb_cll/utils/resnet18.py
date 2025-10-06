@@ -257,24 +257,82 @@ class ResNet(nn.Module):
         return x
 
 
-def _resnet(arch, block, layers, pretrained, progress, device, **kwargs):
+def _resolve_saved_models_path():
+    """Return the absolute path to the saved_models directory."""
+    script_dir = os.path.dirname(__file__)
+    project_root = os.path.abspath(os.path.join(script_dir, "..", ".."))
+    return os.path.join(project_root, "saved_models")
+
+
+def _load_saved_model(filename: str, device: torch.device):
+    saved_models_dir = _resolve_saved_models_path()
+
+    if not os.path.isdir(saved_models_dir):
+        raise FileNotFoundError(
+            f"saved_models directory not found at: {saved_models_dir}. "
+            "Ensure you've exported weights with train.py --save_model true."
+        )
+
+    candidate_paths = []
+
+    def _maybe_add(path: str):
+        if path not in candidate_paths:
+            candidate_paths.append(path)
+
+    base_path = os.path.join(saved_models_dir, filename)
+    _maybe_add(base_path)
+
+    if filename.endswith(".pt"):
+        _maybe_add(base_path[:-3] + ".pth")
+    elif filename.endswith(".pth"):
+        _maybe_add(base_path[:-4] + ".pt")
+    else:
+        _maybe_add(base_path + ".pt")
+        _maybe_add(base_path + ".pth")
+
+    for path in candidate_paths:
+        if os.path.isfile(path):
+            return torch.load(path, map_location=device)
+
+    searched = "\n".join(candidate_paths)
+    raise FileNotFoundError(
+        "Unable to locate pretrained weights. Looked for:\n" + searched
+    )
+
+
+def _resnet(arch, block, layers, pretrained_mode, device, **kwargs):
     model = ResNet(block, layers, **kwargs)
-    if pretrained:
+    if pretrained_mode == 0:
         script_dir = os.path.dirname(__file__)
         state_dict = torch.load(
             script_dir + "/state_dicts/" + arch + ".pt", map_location=device
         )
-        model.load_state_dict(state_dict)
-        model = model.to(device)  # Ensure model is on the correct device
+    elif pretrained_mode == 1:
+        filename = "CIFAR10_cpe-f_resnet18_flipflop_most.pt"
+        state_dict = _load_saved_model(filename, device)
+    elif pretrained_mode == 2:
+        filename = "CIFAR10_cpe-f_resnet18_flipflop_least.pt"
+        state_dict = _load_saved_model(filename, device)
+    elif pretrained_mode == 3:
+        filename = "cifar10_fwd-int_resnet18_flipflop_random.pt"
+        state_dict = _load_saved_model(filename, device)
+    else:
+        raise ValueError(
+            f"Unsupported pretrained_mode={pretrained_mode}. Expected 0 (default), "
+            "1 (CIFAR10 most), 2 (CIFAR10 least) or 3 (CIFAR10 random)."
+        )
+
+    model.load_state_dict(state_dict)
+    model = model.to(device)
     return model
 
 
-def resnet18(pretrained=True, progress=False, device= torch.device('cuda:1'), **kwargs):
+def resnet18(pretrained_mode=0, device= torch.device('cuda:1'), **kwargs):
     """Constructs a ResNet-18 model.
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
     return _resnet(
-        "resnet18", BasicBlock, [2, 2, 2, 2], pretrained, progress, device, **kwargs
+        "resnet18", BasicBlock, [2, 2, 2, 2], pretrained_mode, device, **kwargs
     )

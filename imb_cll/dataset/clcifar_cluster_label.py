@@ -182,7 +182,8 @@ class CLCIFAR10(VisionDataset, BaseDataset):
         aug_type = None,
         cll_type='random',
         noise=False,
-        transition_matrix=None
+        transition_matrix=None,
+        pretrained_mode=0,
     ):
         self.root = root
         self.data_type = data_type
@@ -199,7 +200,7 @@ class CLCIFAR10(VisionDataset, BaseDataset):
         self.noise = noise
         self.transition_matrix = transition_matrix
         self.dataset_name = "CIFAR10"  # Add dataset name attribute
-        # self.image_predictor = create_predictor(device=torch.device('cuda:1'),mode='most', debug=False, noise=self.noise)
+        self.pretrained_mode = pretrained_mode
 
         super(CLCIFAR10, self).__init__(
             root, train, transform, target_transform)

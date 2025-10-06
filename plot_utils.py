@@ -6,6 +6,7 @@ import pandas as pd
 import seaborn as sns
 from typing import Dict, List, Any
 import json
+from scipy import linalg
 
 # Unified function to load data from array format files
 def load_data_file(filename):
@@ -159,7 +160,632 @@ def plot_dataframe_distributions(df_combined=None, figsize_per_col=5):
             print(f"   {col}: {len(series)} values, {series.nunique()} unique, range [{series.min()}-{series.max()}]")
         else:
             print(f"   {col}: No data")
-    print("-" * 50)
+        print("-" * 50)
+
+
+def analyze_matrix_properties(matrix, matrix_name="Matrix", verbose=True):
+    """
+    Analyze mathematical properties of a matrix including determinant, eigenvalues, and invertibility.
+    
+    Args:
+        matrix (np.ndarray or pd.DataFrame): Input matrix to analyze
+        matrix_name (str): Name of the matrix for display purposes. Default: "Matrix"
+        verbose (bool): Whether to print detailed analysis. Default: True
+        
+    Returns:
+        dict: Dictionary containing matrix analysis results:
+            - determinant: float - matrix determinant
+            - eigenvalues: np.ndarray - eigenvalues (complex numbers)
+            - is_invertible: bool - whether matrix is invertible (det != 0)
+            - is_singular: bool - whether matrix is singular (det == 0)
+            - condition_number: float - condition number (measures how close to singular)
+            - rank: int - matrix rank
+            - is_square: bool - whether matrix is square
+            - is_stochastic: bool - whether matrix is row-stochastic (rows sum to 1)
+            - is_doubly_stochastic: bool - whether matrix is doubly stochastic (rows and cols sum to 1)
+            - spectral_radius: float - largest absolute eigenvalue
+            - trace: float - sum of diagonal elements
+            - frobenius_norm: float - Frobenius norm of the matrix
+            - markov_entropy: float - Markov chain entropy (for stochastic matrices)
+            - normalized_markov_entropy: float - normalized Markov entropy (0-1 scale)
+            - mutual_information: float - mutual information between past and future states
+            - entropy_rate: float - entropy rate (conditional entropy H(X_n|X_{n-1}))
+            - mixing_time: float - mixing time estimate (SLEM-based)
+            - spectral_gap: float - spectral gap (1 - second largest eigenvalue magnitude)
+    
+    Example usage:
+        # Analyze a transition matrix
+        results = analyze_matrix_properties(transition_matrix, "CIFAR-10 Transition Matrix")
+        
+        # Get analysis without printing
+        results = analyze_matrix_properties(transition_matrix, verbose=False)
+        
+        # Check specific properties
+        if results['is_invertible']:
+            print("Matrix is invertible!")
+    """
+    
+    # Convert to numpy array if it's a DataFrame
+    if isinstance(matrix, pd.DataFrame):
+        matrix_array = matrix.values
+    else:
+        matrix_array = np.array(matrix)
+    
+    # Initialize results dictionary
+    results = {
+        'matrix_name': matrix_name,
+        'shape': matrix_array.shape,
+        'is_square': matrix_array.shape[0] == matrix_array.shape[1],
+        'determinant': None,
+        'eigenvalues': None,
+        'is_invertible': False,
+        'is_singular': True,
+        'condition_number': None,
+        'rank': None,
+        'is_stochastic': False,
+        'is_doubly_stochastic': False,
+        'spectral_radius': None,
+        'trace': None,
+        'frobenius_norm': None,
+        'markov_entropy': None,
+        'normalized_markov_entropy': None,
+        'mutual_information': None,
+        'entropy_rate': None,
+        'mixing_time': None,
+        'spectral_gap': None
+    }
+    
+    # Basic properties that work for any matrix
+    results['rank'] = np.linalg.matrix_rank(matrix_array)
+    results['frobenius_norm'] = np.linalg.norm(matrix_array, 'fro')
+    
+    # Check if matrix is row-stochastic (each row sums to 1)
+    row_sums = np.sum(matrix_array, axis=1)
+    results['is_stochastic'] = np.allclose(row_sums, 1.0, atol=1e-10)
+    
+    # Check if matrix is doubly stochastic (rows and columns sum to 1)
+    if results['is_stochastic']:
+        col_sums = np.sum(matrix_array, axis=0)
+        results['is_doubly_stochastic'] = np.allclose(col_sums, 1.0, atol=1e-10)
+    
+    # Calculate Markov entropy for stochastic matrices
+    if results['is_stochastic']:
+        def calculate_markov_entropy(matrix, base=2):
+            """Calculate Markov chain entropy for a stochastic matrix"""
+            matrix = np.array(matrix)
+            epsilon = 1e-10
+            matrix_safe = matrix + epsilon
+            
+            # Calculate entropy for each row (state)
+            row_entropies = []
+            for row in matrix_safe:
+                # Normalize row to ensure it sums to 1
+                row_normalized = row / row.sum()
+                # Calculate entropy: -sum(p * log(p))
+                entropy = -np.sum(row_normalized * np.log(row_normalized) / np.log(base))
+                row_entropies.append(entropy)
+            
+            # Return average entropy across all states
+            return np.mean(row_entropies)
+        
+        def calculate_stationary_distribution(matrix):
+            """Calculate stationary distribution of the Markov chain"""
+            try:
+                eigenvals, eigenvects = np.linalg.eig(matrix.T)
+                # Find eigenvalue closest to 1
+                idx = np.argmin(np.abs(eigenvals - 1.0))
+                stationary = np.real(eigenvects[:, idx])
+                # Normalize to get probability distribution
+                stationary = np.abs(stationary) / np.sum(np.abs(stationary))
+                return stationary
+            except:
+                # Fallback: uniform distribution
+                return np.ones(matrix.shape[0]) / matrix.shape[0]
+        
+        def calculate_mutual_information(matrix, stationary_dist, base=2):
+            """Calculate mutual information between consecutive states"""
+            matrix = np.array(matrix)
+            epsilon = 1e-10
+            
+            mutual_info = 0.0
+            for i in range(matrix.shape[0]):
+                for j in range(matrix.shape[1]):
+                    if matrix[i, j] > epsilon:
+                        # P(X_t = i, X_{t+1} = j)
+                        joint_prob = stationary_dist[i] * matrix[i, j]
+                        # P(X_t = i) * P(X_{t+1} = j)
+                        marginal_prob = stationary_dist[i] * stationary_dist[j]
+                        
+                        if marginal_prob > epsilon:
+                            mutual_info += joint_prob * np.log(joint_prob / marginal_prob) / np.log(base)
+            
+            return mutual_info
+        
+        def calculate_entropy_rate(matrix, stationary_dist, base=2):
+            """Calculate entropy rate H(X_n | X_{n-1})"""
+            # Entropy rate = sum over states of stationary_prob * conditional_entropy
+            entropy_rate = 0.0
+            epsilon = 1e-10
+            
+            for i in range(matrix.shape[0]):
+                if stationary_dist[i] > epsilon:
+                    # Calculate conditional entropy H(X_{n+1} | X_n = i)
+                    conditional_entropy = 0.0
+                    for j in range(matrix.shape[1]):
+                        if matrix[i, j] > epsilon:
+                            conditional_entropy -= matrix[i, j] * np.log(matrix[i, j]) / np.log(base)
+                    
+                    entropy_rate += stationary_dist[i] * conditional_entropy
+            
+            return entropy_rate
+        
+        def calculate_mixing_properties(matrix):
+            """Calculate mixing time and spectral gap"""
+            try:
+                eigenvals = np.linalg.eigvals(matrix)
+                # Sort eigenvalues by magnitude (descending)
+                eigenvals_sorted = np.sort(np.abs(eigenvals))[::-1]
+                
+                # Spectral gap = 1 - second largest eigenvalue magnitude
+                if len(eigenvals_sorted) > 1:
+                    spectral_gap = 1.0 - eigenvals_sorted[1]
+                else:
+                    spectral_gap = 1.0
+                
+                # Mixing time estimate using spectral gap
+                # T_mix ≈ log(n) / gap where n is number of states
+                if spectral_gap > 1e-10:
+                    mixing_time = np.log(matrix.shape[0]) / spectral_gap
+                else:
+                    mixing_time = np.inf
+                
+                return mixing_time, spectral_gap
+            except:
+                return np.inf, 0.0
+        
+        # Calculate all Markov chain properties
+        results['markov_entropy'] = calculate_markov_entropy(matrix_array)
+        
+        # Calculate normalized entropy (0-1 scale)
+        if results['is_square']:
+            n_states = matrix_array.shape[0]
+            max_entropy = np.log(n_states) / np.log(2)  # Maximum entropy for uniform distribution
+            results['normalized_markov_entropy'] = results['markov_entropy'] / max_entropy if max_entropy > 0 else 0
+        else:
+            results['normalized_markov_entropy'] = None
+        
+        # Calculate stationary distribution
+        stationary_dist = calculate_stationary_distribution(matrix_array)
+        
+        # Calculate mutual information
+        results['mutual_information'] = calculate_mutual_information(matrix_array, stationary_dist)
+        
+        # Calculate entropy rate (conditional entropy)
+        results['entropy_rate'] = calculate_entropy_rate(matrix_array, stationary_dist)
+        
+        # Calculate mixing properties
+        if results['is_square']:
+            mixing_time, spectral_gap = calculate_mixing_properties(matrix_array)
+            results['mixing_time'] = mixing_time
+            results['spectral_gap'] = spectral_gap
+        else:
+            results['mixing_time'] = None
+            results['spectral_gap'] = None
+    
+    # Square matrix specific properties
+    if results['is_square']:
+        try:
+            # Calculate determinant
+            results['determinant'] = np.linalg.det(matrix_array)
+            
+            # Check invertibility (non-zero determinant)
+            results['is_invertible'] = abs(results['determinant']) > 0
+            results['is_singular'] = not results['is_invertible']
+            
+            # Calculate condition number
+            if results['is_invertible']:
+                results['condition_number'] = np.linalg.cond(matrix_array)
+            else:
+                results['condition_number'] = np.inf
+            
+            # Calculate eigenvalues
+            eigenvals = np.linalg.eigvals(matrix_array)
+            results['eigenvalues'] = eigenvals
+            
+            # Spectral radius (largest absolute eigenvalue)
+            results['spectral_radius'] = np.max(np.abs(eigenvals))
+            
+            # Trace (sum of diagonal elements)
+            results['trace'] = np.trace(matrix_array)
+            
+        except np.linalg.LinAlgError as e:
+            if verbose:
+                print(f"⚠️ Warning: Could not compute some properties for {matrix_name}: {e}")
+    
+    # Print detailed analysis if requested
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"🧮 MATRIX ANALYSIS: {matrix_name.upper()}")
+        print(f"{'='*60}")
+        
+        # Basic properties
+        print(f"📊 Shape: {results['shape']}")
+        print(f"📏 Rank: {results['rank']}")
+        print(f"📐 Frobenius Norm: {results['frobenius_norm']:.6f}")
+        
+        # Square matrix properties
+        if results['is_square']:
+            print(f"⬜ Square Matrix: ✅")
+            print(f"🔢 Determinant: {results['determinant']:.6f}")
+            print(f"🔄 Invertible: {'✅ Yes' if results['is_invertible'] else '❌ No (Singular)'}")
+            
+            if results['condition_number'] is not None:
+                if results['condition_number'] == np.inf:
+                    print(f"📏 Condition Number: ∞ (Singular)")
+                else:
+                    print(f"📏 Condition Number: {results['condition_number']:.6f}")
+                    if results['condition_number'] > 1e12:
+                        print("   ⚠️ Very ill-conditioned (near singular)")
+                    elif results['condition_number'] > 1e6:
+                        print("   ⚠️ Ill-conditioned")
+                    else:
+                        print("   ✅ Well-conditioned")
+            
+            print(f"🎯 Trace: {results['trace']:.6f}")
+            print(f"🌟 Spectral Radius: {results['spectral_radius']:.6f}")
+            
+            # Eigenvalue analysis
+            if results['eigenvalues'] is not None:
+                real_eigenvals = results['eigenvalues'].real
+                imag_eigenvals = results['eigenvalues'].imag
+                
+                print(f"\n🔍 Eigenvalue Analysis:")
+                print(f"   Number of eigenvalues: {len(results['eigenvalues'])}")
+                print(f"   Real eigenvalues range: [{real_eigenvals.min():.6f}, {real_eigenvals.max():.6f}]")
+                
+                # Check for complex eigenvalues
+                complex_count = np.sum(np.abs(imag_eigenvals) > 1e-10)
+                if complex_count > 0:
+                    print(f"   Complex eigenvalues: {complex_count} found")
+                    print(f"   Imaginary parts range: [{imag_eigenvals.min():.6f}, {imag_eigenvals.max():.6f}]")
+                else:
+                    print(f"   All eigenvalues are real ✅")
+                
+                # Dominant eigenvalue
+                dominant_idx = np.argmax(np.abs(results['eigenvalues']))
+                dominant_eigenval = results['eigenvalues'][dominant_idx]
+                print(f"   Dominant eigenvalue: {dominant_eigenval:.6f}")
+                
+                # Check for eigenvalue = 1 (important for stochastic matrices)
+                unit_eigenvals = np.sum(np.abs(np.abs(results['eigenvalues']) - 1.0) < 1e-10)
+                if unit_eigenvals > 0:
+                    print(f"   Unit eigenvalues (|λ| = 1): {unit_eigenvals}")
+        else:
+            print(f"⬜ Square Matrix: ❌ (Cannot compute determinant/eigenvalues)")
+        
+        # Stochastic properties
+        print(f"\n🎲 Stochastic Properties:")
+        print(f"   Row-stochastic: {'✅ Yes' if results['is_stochastic'] else '❌ No'}")
+        if results['is_stochastic']:
+            print(f"   Doubly-stochastic: {'✅ Yes' if results['is_doubly_stochastic'] else '❌ No'}")
+            print("   ✅ Valid transition/probability matrix")
+            
+            # Print Markov entropy information
+            if results['markov_entropy'] is not None:
+                print(f"\n🎯 Markov Chain Entropy:")
+                print(f"   Entropy: {results['markov_entropy']:.6f} bits")
+                if results['normalized_markov_entropy'] is not None:
+                    print(f"   Normalized entropy: {results['normalized_markov_entropy']:.6f} (0-1 scale)")
+                    
+                    # # Interpretation of entropy level
+                    # if results['normalized_markov_entropy'] > 0.8:
+                    #     print(f"   🎲 High entropy: Very random/unpredictable transitions")
+                    # elif results['normalized_markov_entropy'] > 0.5:
+                    #     print(f"   ⚖️ Medium entropy: Moderately predictable transitions")
+                    # elif results['normalized_markov_entropy'] > 0.2:
+                    #     print(f"   🎯 Low entropy: Fairly predictable transitions")
+                    # else:
+                    #     print(f"   🔒 Very low entropy: Highly deterministic transitions")
+                
+                # Print additional Markov chain properties
+                if results['entropy_rate'] is not None:
+                    print(f"\n📊 Advanced Markov Properties:")
+                    print(f"   Entropy rate H(X_n|X_{{n-1}}): {results['entropy_rate']:.6f} bits")
+                    
+                    if results['mutual_information'] is not None:
+                        print(f"   Mutual information I(X_n;X_{{n+1}}): {results['mutual_information']:.6f} bits")
+                        
+                        # # Interpretation of memory/dependence
+                        # if results['mutual_information'] > 1.0:
+                        #     print(f"   🧠 High memory: Strong dependence between consecutive states")
+                        # elif results['mutual_information'] > 0.5:
+                        #     print(f"   🧠 Medium memory: Moderate dependence between states")
+                        # elif results['mutual_information'] > 0.1:
+                        #     print(f"   🧠 Low memory: Weak dependence between states")
+                        # else:
+                        #     print(f"   🧠 Very low memory: Nearly independent states")
+                    
+                    if results['spectral_gap'] is not None and results['mixing_time'] is not None:
+                        print(f"\n⚡ Mixing Properties:")
+                        print(f"   Spectral gap: {results['spectral_gap']:.6f}")
+                        
+                        if results['mixing_time'] == np.inf:
+                            print(f"   Mixing time: ∞ (reducible/non-ergodic chain)")
+                        else:
+                            print(f"   Mixing time estimate: {results['mixing_time']:.2f} steps")
+                            
+                            # # Interpretation of mixing speed
+                            # n_states = matrix_array.shape[0]
+                            # if results['mixing_time'] < n_states:
+                            #     print(f"   🚀 Fast mixing: Quickly reaches equilibrium")
+                            # elif results['mixing_time'] < 5 * n_states:
+                            #     print(f"   ⚖️ Moderate mixing: Reasonable convergence time")
+                            # else:
+                            #     print(f"   🐌 Slow mixing: Takes long to reach equilibrium")
+                        
+                        # # Spectral gap interpretation
+                        # if results['spectral_gap'] > 0.5:
+                        #     print(f"   ✅ Large spectral gap: Well-connected chain")
+                        # elif results['spectral_gap'] > 0.1:
+                        #     print(f"   ⚠️ Medium spectral gap: Moderately connected")
+                        # else:
+                        #     print(f"   ❌ Small spectral gap: Poorly connected or reducible")
+        else:
+            row_sums = np.sum(matrix_array, axis=1)
+            print(f"   Row sums range: [{row_sums.min():.6f}, {row_sums.max():.6f}]")
+            print("   ⚠️ Not a valid probability matrix")
+        
+        print(f"{'='*60}")
+    
+    return results
+
+
+def calculate_markov_chain_entropy(df, col1, col2, true_col='true', normalize=True, base=2, verbose=True):
+    """
+    Calculate the Markov Chain Entropy between two transition matrices from DataFrame columns.
+    
+    Markov Chain Entropy measures the uncertainty or information content in transition patterns.
+    Higher entropy indicates more uncertainty/randomness in transitions, while lower entropy
+    indicates more predictable transition patterns.
+    
+    Args:
+        df (pd.DataFrame): Combined dataframe with prediction columns and true labels
+        col1 (str): Name of first prediction column
+        col2 (str): Name of second prediction column  
+        true_col (str): Name of the column containing true/reference labels. Default: 'true'
+        normalize (bool): Whether to normalize entropy by maximum possible entropy. Default: True
+        base (float): Logarithm base for entropy calculation (2=bits, e=nats, 10=dits). Default: 2
+        verbose (bool): Whether to print detailed analysis. Default: True
+        
+    Returns:
+        dict: Dictionary containing entropy analysis results:
+            - entropy_col1: float - entropy of first transition matrix
+            - entropy_col2: float - entropy of second transition matrix
+            - entropy_difference: float - absolute difference between entropies
+            - entropy_ratio: float - ratio of entropies (col1/col2)
+            - cross_entropy: float - cross entropy between the two matrices
+            - kl_divergence_col1_to_col2: float - KL divergence from col1 to col2
+            - kl_divergence_col2_to_col1: float - KL divergence from col2 to col1
+            - js_divergence: float - Jensen-Shannon divergence (symmetric)
+            - max_entropy: float - maximum possible entropy for this number of classes
+            - normalized_entropy_col1: float - normalized entropy of col1 (if normalize=True)
+            - normalized_entropy_col2: float - normalized entropy of col2 (if normalize=True)
+    
+    Example usage:
+        # Basic entropy comparison between 'most' and 'least' columns
+        entropy_results = calculate_markov_chain_entropy(df_combined, 'most', 'least')
+        
+        # Use different true column and entropy base
+        entropy_results = calculate_markov_chain_entropy(df_combined, 'pred1', 'pred2', 
+                                                       true_col='ground_truth', base=np.e)
+        
+        # Get results without detailed printing
+        entropy_results = calculate_markov_chain_entropy(df_combined, 'most', 'least', verbose=False)
+        
+        # Access specific metrics
+        print(f"Entropy difference: {entropy_results['entropy_difference']:.4f}")
+        print(f"JS Divergence: {entropy_results['js_divergence']:.4f}")
+    """
+    
+    # Validate inputs
+    missing_cols = [col for col in [col1, col2, true_col] if col not in df.columns]
+    if missing_cols:
+        print(f"❌ Error: Missing columns {missing_cols} in dataframe!")
+        print(f"Available columns: {list(df.columns)}")
+        return None
+    
+    if verbose:
+        print(f"\n{'='*80}")
+        print(f"🎲 MARKOV CHAIN ENTROPY ANALYSIS")
+        print(f"{'='*80}")
+        print(f"Comparing: '{col1}' vs '{col2}' (relative to '{true_col}')")
+        print(f"Entropy base: {base} ({'bits' if base==2 else 'nats' if base==np.e else 'dits' if base==10 else 'custom'})")
+    
+    def create_transition_matrix(df, pred_col, true_col):
+        """Create normalized transition matrix from DataFrame columns"""
+        # Get canonical class set
+        all_true_labels = df[true_col].dropna()
+        if len(all_true_labels) == 0:
+            return None
+        
+        unique_true_labels = sorted(all_true_labels.unique())
+        min_label = int(min(unique_true_labels))
+        max_label = int(max(unique_true_labels))
+        canonical_classes = list(range(min_label, max_label + 1))
+        
+        # Create crosstab and normalize
+        ct_raw = pd.crosstab(df[true_col], df[pred_col], dropna=False)
+        ct = ct_raw.reindex(index=canonical_classes, columns=canonical_classes, fill_value=0)
+        
+        # Row-normalize to get P(predicted | true)
+        transition_matrix = ct.div(ct.sum(axis=1), axis=0).fillna(0)
+        return transition_matrix.values
+    
+    def calculate_entropy(matrix, base=2):
+        """Calculate entropy of a transition matrix"""
+        matrix = np.array(matrix)
+        # Avoid log(0) by adding small epsilon
+        epsilon = 1e-10
+        matrix_safe = matrix + epsilon
+        
+        # Calculate entropy for each row (true class)
+        row_entropies = []
+        for row in matrix_safe:
+            # Normalize row to ensure it sums to 1
+            row_normalized = row / row.sum()
+            # Calculate entropy: -sum(p * log(p))
+            entropy = -np.sum(row_normalized * np.log(row_normalized) / np.log(base))
+            row_entropies.append(entropy)
+        
+        # Return average entropy across all true classes
+        return np.mean(row_entropies)
+    
+    def calculate_cross_entropy(matrix1, matrix2, base=2):
+        """Calculate cross entropy between two matrices"""
+        matrix1 = np.array(matrix1)
+        matrix2 = np.array(matrix2)
+        epsilon = 1e-10
+        
+        # Ensure matrices are properly normalized
+        matrix1_norm = matrix1 / (matrix1.sum(axis=1, keepdims=True) + epsilon)
+        matrix2_norm = matrix2 / (matrix2.sum(axis=1, keepdims=True) + epsilon) + epsilon
+        
+        # Calculate cross entropy: -sum(p * log(q))
+        cross_entropies = []
+        for i in range(len(matrix1_norm)):
+            cross_entropy = -np.sum(matrix1_norm[i] * np.log(matrix2_norm[i]) / np.log(base))
+            cross_entropies.append(cross_entropy)
+        
+        return np.mean(cross_entropies)
+    
+    def calculate_kl_divergence(matrix1, matrix2, base=2):
+        """Calculate KL divergence from matrix1 to matrix2"""
+        cross_ent = calculate_cross_entropy(matrix1, matrix2, base)
+        entropy1 = calculate_entropy(matrix1, base)
+        return cross_ent - entropy1
+    
+    def calculate_js_divergence(matrix1, matrix2, base=2):
+        """Calculate Jensen-Shannon divergence (symmetric)"""
+        # Average of the two matrices
+        matrix_avg = 0.5 * (matrix1 + matrix2)
+        
+        # JS divergence = 0.5 * (KL(P||M) + KL(Q||M))
+        kl1 = calculate_kl_divergence(matrix1, matrix_avg, base)
+        kl2 = calculate_kl_divergence(matrix2, matrix_avg, base)
+        
+        return 0.5 * (kl1 + kl2)
+    
+    # Create transition matrices
+    if verbose:
+        print(f"\n🔄 Creating transition matrices...")
+    
+    matrix1 = create_transition_matrix(df, col1, true_col)
+    matrix2 = create_transition_matrix(df, col2, true_col)
+    
+    if matrix1 is None or matrix2 is None:
+        print(f"❌ Error: Could not create transition matrices")
+        return None
+    
+    if matrix1.shape != matrix2.shape:
+        print(f"❌ Error: Matrix shapes don't match: {matrix1.shape} vs {matrix2.shape}")
+        return None
+    
+    n_classes = matrix1.shape[0]
+    if verbose:
+        print(f"   Matrix shape: {matrix1.shape}")
+        print(f"   Number of classes: {n_classes}")
+    
+    # Calculate entropies and divergences
+    entropy1 = calculate_entropy(matrix1, base)
+    entropy2 = calculate_entropy(matrix2, base)
+    cross_entropy = calculate_cross_entropy(matrix1, matrix2, base)
+    kl_div_1_to_2 = calculate_kl_divergence(matrix1, matrix2, base)
+    kl_div_2_to_1 = calculate_kl_divergence(matrix2, matrix1, base)
+    js_div = calculate_js_divergence(matrix1, matrix2, base)
+    
+    # Calculate maximum possible entropy (uniform distribution)
+    max_entropy = np.log(n_classes) / np.log(base)
+    
+    # Normalize entropies if requested
+    normalized_entropy1 = entropy1 / max_entropy if normalize else None
+    normalized_entropy2 = entropy2 / max_entropy if normalize else None
+    
+    # Calculate differences and ratios
+    entropy_diff = abs(entropy1 - entropy2)
+    entropy_ratio = entropy1 / entropy2 if entropy2 > 0 else np.inf
+    
+    # Store results
+    results = {
+        'col1': col1,
+        'col2': col2,
+        'true_col': true_col,
+        'n_classes': n_classes,
+        'base': base,
+        'entropy_col1': entropy1,
+        'entropy_col2': entropy2,
+        'entropy_difference': entropy_diff,
+        'entropy_ratio': entropy_ratio,
+        'cross_entropy': cross_entropy,
+        'kl_divergence_col1_to_col2': kl_div_1_to_2,
+        'kl_divergence_col2_to_col1': kl_div_2_to_1,
+        'js_divergence': js_div,
+        'max_entropy': max_entropy,
+        'normalized_entropy_col1': normalized_entropy1,
+        'normalized_entropy_col2': normalized_entropy2,
+        'matrix1': matrix1,
+        'matrix2': matrix2
+    }
+    
+    # Print detailed analysis
+    if verbose:
+        print(f"\n📊 ENTROPY RESULTS:")
+        print(f"   {col1} entropy: {entropy1:.6f}")
+        print(f"   {col2} entropy: {entropy2:.6f}")
+        print(f"   Entropy difference: {entropy_diff:.6f}")
+        print(f"   Entropy ratio ({col1}/{col2}): {entropy_ratio:.6f}")
+        print(f"   Maximum possible entropy: {max_entropy:.6f}")
+        
+        if normalize:
+            print(f"\n📏 NORMALIZED ENTROPIES (0-1 scale):")
+            print(f"   {col1} normalized: {normalized_entropy1:.6f}")
+            print(f"   {col2} normalized: {normalized_entropy2:.6f}")
+        
+        print(f"\n🔀 DIVERGENCE MEASURES:")
+        print(f"   Cross entropy ({col1} → {col2}): {cross_entropy:.6f}")
+        print(f"   KL divergence ({col1} → {col2}): {kl_div_1_to_2:.6f}")
+        print(f"   KL divergence ({col2} → {col1}): {kl_div_2_to_1:.6f}")
+        print(f"   Jensen-Shannon divergence: {js_div:.6f}")
+        
+        # Interpretation
+        print(f"\n🎯 INTERPRETATION:")
+        if entropy_diff < 0.1:
+            print(f"   ✅ Very similar entropy levels (diff: {entropy_diff:.6f})")
+        elif entropy_diff < 0.5:
+            print(f"   ⚠️ Moderately different entropy levels (diff: {entropy_diff:.6f})")
+        else:
+            print(f"   ❗ Significantly different entropy levels (diff: {entropy_diff:.6f})")
+        
+        higher_entropy_col = col1 if entropy1 > entropy2 else col2
+        print(f"   📈 '{higher_entropy_col}' has higher entropy (more uncertain/random)")
+        
+        if js_div < 0.1:
+            print(f"   ✅ Matrices are quite similar (JS divergence: {js_div:.6f})")
+        elif js_div < 0.5:
+            print(f"   ⚠️ Matrices are moderately different (JS divergence: {js_div:.6f})")
+        else:
+            print(f"   ❗ Matrices are significantly different (JS divergence: {js_div:.6f})")
+        
+        if normalize:
+            if max(normalized_entropy1, normalized_entropy2) > 0.8:
+                print(f"   🎲 High randomness: Close to uniform distribution")
+            elif max(normalized_entropy1, normalized_entropy2) < 0.3:
+                print(f"   🎯 Low randomness: Highly predictable transitions")
+            else:
+                print(f"   ⚖️ Moderate randomness: Balanced transition patterns")
+        
+        print(f"{'='*80}")
+    
+    return results
 
 
 def analyze_wandb_run(run_id):
@@ -369,61 +995,8 @@ def plot_learning_curves(metrics: Dict[str, List[Any]], output_filename: str = "
     
     print(f"Plot successfully saved to: {output_path}")
 
-# --- Main execution ---
-if __name__ == "__main__":
-    # You can paste your log data directly into this string
-    log_data = """
-    => Weighting per class: tensor([1., 1., 1., 1., 1., 1., 1., 1., 1., 1.])
-    Alpha value for generating Lambda with Dirichlet(alpha, alpha, alpha) distribution: 1.0
-    ===========================================
-    Epoch: [0][0/97], lr: 0.00100	Loss 1.7878 (1.7878)	Prec@1 2.148 (2.148)	Prec@5 23.047 (23.047)
-    Epoch: [0][90/97], lr: 0.00100	Loss 1.0272 (1.2338)	Prec@1 0.781 (2.026)	Prec@5 13.281 (24.521)
-    Training Results: Prec@1 1.9531 Prec@5 23.8080         Loss 1.224455
-    Testing Results: Prec@1 44.8499 Prec@5 88.2093         Loss 1.615152
-    Best Prec@1: 44.850
 
-    => Weighting per class: tensor([1., 1., 1., 1., 1., 1., 1., 1., 1., 1.])
-    Alpha value for generating Lambda with Dirichlet(alpha, alpha, alpha) distribution: 1.0
-    ===========================================
-    Epoch: [1][0/97], lr: 0.00100	Loss 1.0694 (1.0694)	Prec@1 0.195 (0.195)	Prec@5 16.992 (16.992)
-    Epoch: [1][90/97], lr: 0.00100	Loss 1.0248 (1.0850)	Prec@1 0.781 (0.989)	Prec@5 9.180 (11.388)
-    Training Results: Prec@1 0.9786 Prec@5 11.2637         Loss 1.082576
-    Testing Results: Prec@1 52.3849 Prec@5 95.6517         Loss 1.254187
-    Best Prec@1: 52.385
-
-    => Weighting per class: tensor([1., 1., 1., 1., 1., 1., 1., 1., 1., 1.])
-    Alpha value for generating Lambda with Dirichlet(alpha, alpha, alpha) distribution: 1.0
-    ===========================================
-    Epoch: [2][0/97], lr: 0.00100	Loss 0.9539 (0.9539)	Prec@1 0.391 (0.391)	Prec@5 7.031 (7.031)
-    Epoch: [2][90/97], lr: 0.00100	Loss 0.9736 (1.0037)	Prec@1 0.586 (0.642)	Prec@5 11.719 (10.433)
-    Training Results: Prec@1 0.6403 Prec@5 10.3254         Loss 1.002666
-    Testing Results: Prec@1 51.9120 Prec@5 93.0201         Loss 1.346574
-    Best Prec@1: 52.385
-    """
-
-    # To use a log file instead of the string, comment out the `log_data`
-    # variable and uncomment the following lines.
-    #
-    # log_file_path = "your_training_log.log"
-    # try:
-    #     with open(log_file_path, "r") as f:
-    #         log_data = f.read()
-    # except FileNotFoundError:
-    #     print(f"Error: Log file not found at '{log_file_path}'.")
-    #     exit()
-
-    # Parse the log data to extract metrics
-    extracted_metrics = parse_training_log(log_data)
-
-    # Check if any data was extracted before plotting
-    if not extracted_metrics['epochs']:
-        print("Could not find any training or testing results in the log data.")
-    else:
-        # Generate and save the plots to the 'output' folder.
-        # You can change the filename for each run.
-        plot_learning_curves(extracted_metrics, output_filename="first_training_run.png")
-
-def plot_transition_matrices(df, true_col='true', figsize=(8, 6), dpi=300, include_missing_values=True, savepath=None):
+def plot_transition_matrices(df, true_col='true', figsize=(8, 6), dpi=300, include_missing_values=True, savepath=None, analyze_matrix=True):
     """
     Plot transition matrices for all columns vs a reference 'true' column in a DataFrame.
     
@@ -436,9 +1009,10 @@ def plot_transition_matrices(df, true_col='true', figsize=(8, 6), dpi=300, inclu
         savepath (str): Path to save the transition matrix as a txt file. Default: None (no saving)
                        If multiple prediction columns exist, column names will be appended to filename.
                        Example: 'matrix.txt' becomes 'matrix_most.txt', 'matrix_least.txt', etc.
+        analyze_matrix (bool): Whether to perform mathematical analysis of matrix properties. Default: True
         
     Returns:
-        dict: Dictionary containing transition counts and proportions for each column
+        dict: Dictionary containing transition counts, proportions, and matrix analysis for each column
         
     Example usage:
         # Basic usage with standard 'true' column
@@ -456,6 +1030,9 @@ def plot_transition_matrices(df, true_col='true', figsize=(8, 6), dpi=300, inclu
         # Save with multiple columns (creates multiple files with column names appended)
         results = plot_transition_matrices(df_combined, savepath='matrices/transition_matrix.txt')
         # Creates: matrices/transition_matrix_most.txt, matrices/transition_matrix_least.txt, etc.
+        
+        # Skip matrix analysis for faster processing
+        results = plot_transition_matrices(df_combined, analyze_matrix=False)
     """
     
     if true_col not in df.columns:
@@ -475,6 +1052,7 @@ def plot_transition_matrices(df, true_col='true', figsize=(8, 6), dpi=300, inclu
     
     transition_counts = {}
     transition_props = {}
+    matrix_analyses = {}
     
     for col in pred_cols:
         print(f"\n{'='*60}")
@@ -531,6 +1109,7 @@ def plot_transition_matrices(df, true_col='true', figsize=(8, 6), dpi=300, inclu
         if ct_no_margins.empty or ct_no_margins.shape[0] == 0 or ct_no_margins.shape[1] == 0:
             print(f"\n⚠️ No data available for transition matrix between '{true_col}' and '{col}'")
             transition_props[col] = pd.DataFrame()
+            matrix_analyses[col] = None
             continue
         
         # Calculate row-normalized proportions P(predicted | true) - rows sum to 1
@@ -538,6 +1117,13 @@ def plot_transition_matrices(df, true_col='true', figsize=(8, 6), dpi=300, inclu
         
         print(f"\nRow-normalized proportions P({col}|{true_col}):")
         print(transition_props[col].round(3))
+        
+        # Perform matrix analysis if requested
+        if analyze_matrix and not transition_props[col].empty:
+            matrix_name = f"{col} vs {true_col} Transition Matrix"
+            matrix_analyses[col] = analyze_matrix_properties(transition_props[col], matrix_name)
+        else:
+            matrix_analyses[col] = None
         
         # Save transition matrix to file if savepath is provided
         if savepath is not None and not transition_props[col].empty:
@@ -602,12 +1188,13 @@ def plot_transition_matrices(df, true_col='true', figsize=(8, 6), dpi=300, inclu
     return {
         'transition_counts': transition_counts,
         'transition_props': transition_props,
+        'matrix_analyses': matrix_analyses,
         'prediction_columns': pred_cols,
         'true_column': true_col
     }
 
 
-def plot_transition_matrix_from_file(file_path, matrix_name="Transition Matrix", figsize=(8, 6), dpi=300):
+def plot_transition_matrix_from_file(file_path, matrix_name="Transition Matrix", figsize=(10, 8), dpi=300, analyze_matrix=True):
     """
     Load a transition matrix from a text file and plot it as a heatmap.
     
@@ -616,19 +1203,23 @@ def plot_transition_matrix_from_file(file_path, matrix_name="Transition Matrix",
         matrix_name (str): Name/title for the matrix plot. Default: "Transition Matrix"
         figsize (tuple): Figure size for the heatmap. Default: (8, 6)
         dpi (int): DPI for high-resolution plots. Default: 300
+        analyze_matrix (bool): Whether to perform mathematical analysis of matrix properties. Default: True
         
     Returns:
-        np.ndarray: The loaded transition matrix as a numpy array
+        dict: Dictionary containing the loaded matrix and analysis results (if requested)
         
     Example usage:
         # Load and plot a saved transition matrix
-        matrix = plot_transition_matrix_from_file('transition_matrix_least_fwd-int_cifar20.txt', 
+        result = plot_transition_matrix_from_file('transition_matrix_least_fwd-int_cifar20.txt', 
                                                  'CIFAR-20 FWD-INT Least')
         
         # Load with custom figure size for larger matrices
-        matrix = plot_transition_matrix_from_file('transition_matrix_cifar100.txt', 
+        result = plot_transition_matrix_from_file('transition_matrix_cifar100.txt', 
                                                  'CIFAR-100 Transition Matrix', 
                                                  figsize=(12, 10))
+        
+        # Load without matrix analysis for faster processing
+        result = plot_transition_matrix_from_file('matrix.txt', analyze_matrix=False)
     """
     
     try:
@@ -646,6 +1237,11 @@ def plot_transition_matrix_from_file(file_path, matrix_name="Transition Matrix",
         df_matrix = pd.DataFrame(transition_matrix, 
                                index=class_labels, 
                                columns=class_labels)
+        
+        # Perform matrix analysis if requested
+        matrix_analysis = None
+        if analyze_matrix:
+            matrix_analysis = analyze_matrix_properties(transition_matrix, matrix_name)
         
         # Create heatmap if we have valid data
         if not df_matrix.empty and df_matrix.size > 0:
@@ -698,7 +1294,13 @@ def plot_transition_matrix_from_file(file_path, matrix_name="Transition Matrix",
         print(f"✅ MATRIX VISUALIZATION COMPLETE")
         print(f"{'='*60}")
         
-        return transition_matrix
+        return {
+            'matrix': transition_matrix,
+            'dataframe': df_matrix,
+            'analysis': matrix_analysis,
+            'file_path': file_path,
+            'matrix_name': matrix_name
+        }
         
     except FileNotFoundError:
         print(f"❌ Error: File '{file_path}' not found!")
@@ -919,3 +1521,4 @@ def verify_cifar_data_indexing(dataset_name, num_samples=3, data_path_override=N
         print(f"❌ Some verifications failed for {dataset_name.upper()}!")
     
     return verification_passed
+

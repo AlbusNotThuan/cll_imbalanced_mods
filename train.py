@@ -18,6 +18,40 @@ import pdb
 
 num_workers = 4
 
+def save_model_weights(model, args, best_acc):
+    """Save model weights with structured naming convention"""
+    save_model = True if args.save_model.lower() == "true" else False
+    if not save_model:
+        return
+    
+    # Create save directory
+    os.makedirs(args.save_dir, exist_ok=True)
+    
+    # Build filename with naming convention
+    dataset_name = args.dataset_name.lower()
+    algo = args.algo
+    model_type = args.model
+    imb_factor = args.imb_factor
+    lr = args.lr
+    weight_decay = args.weight_decay
+    aug_type = args.aug_type
+    new_data_aug = args.new_data_aug
+    cll_type = args.cll_type
+    
+    # Custom prefix if provided
+    prefix = args.model_name_prefix if args.model_name_prefix else ""
+    prefix = f"{prefix}_" if prefix else ""
+    
+    # Create filename
+    filename = f"{prefix}{dataset_name}_{algo}_{model_type}_{aug_type}_{cll_type}.pt"
+    filepath = os.path.join(args.save_dir, filename)
+    
+    # Save model state dict
+    torch.save(model.state_dict(), filepath)
+    print(f"Model weights saved: {filepath}")
+    
+    return filepath
+
 def train_icm(args):
     device = torch.device(f'cuda:{args.gpu}')
     dataset_name = args.dataset_name
@@ -83,8 +117,8 @@ def train_icm(args):
         # Define matrix file for 2 cases: Dbar[prompt]_T and Dbar_T[prompt]
         matrix_filename = (
             cll_type if setup_type in ["Dbar[prompt]_T", "Dbar[prompt]_T[prompt]"] 
-            else "most[prompt]" if cll_type=="most" 
-            else "least[prompt]" if cll_type=="least" 
+            else "most[prompt]" if cll_type in ["most", "most+rand"] 
+            else "least[prompt]" if cll_type in ["least", "least+rand"]
             else cll_type
         ) 
         if args.transition_matrix is None:
@@ -108,15 +142,64 @@ def train_icm(args):
             raise ValueError("Transition matrix file must be .npy or .txt format")
         
         print(f"Loaded transition matrix with shape: {transition_matrix.shape}")
-        # print(f"Row sums: {transition_matrix.sum(axis=1)}")
+
+        if cll_type in ['most+rand', 'least+rand']:
+            # Apply bias shifting to reduce diagonal dominance
+            n = 4  # Number of rows to modify
+            bias_threshold = 0.7
+            
+            # Find rows with huge bias (any probability > 0.7)
+            biased_rows = []
+            for i in range(transition_matrix.shape[0]):
+                if np.max(transition_matrix[i]) > bias_threshold:
+                    biased_rows.append(i)
+            
+            print(f"Found {len(biased_rows)} rows with bias > {bias_threshold}")
+            
+            # Randomly select n rows (or all if fewer than n)
+            num_rows_to_select = min(n, len(biased_rows))
+            rows_to_modify = np.random.choice(biased_rows, size=num_rows_to_select, replace=False).tolist()
+            print(f"Randomly selected {len(rows_to_modify)} rows to modify: {rows_to_modify}")
+            
+            # Apply circular left shift to selected rows
+            for row_idx in rows_to_modify:
+                original_row = transition_matrix[row_idx].copy()
+                max_val_idx = np.argmax(original_row)
+                
+                # Try different shift amounts to avoid diagonal placement
+                valid_shifts = []
+                for shift in range(1, transition_matrix.shape[1]):
+                    new_max_idx = (max_val_idx - shift) % transition_matrix.shape[1]
+                    if new_max_idx != row_idx:  # Avoid diagonal
+                        valid_shifts.append(shift)
+                
+                if valid_shifts:
+                    # Randomly choose a valid shift amount
+                    shift_amount = np.random.choice(valid_shifts)
+                    # Apply circular left shift
+                    transition_matrix[row_idx] = np.roll(original_row, -shift_amount)
+                    new_max_idx = (max_val_idx - shift_amount) % transition_matrix.shape[1]
+                    print(f"  Row {row_idx}: shifted left by {shift_amount}, max moved from col {max_val_idx} to col {new_max_idx}")
+                else:
+                    print(f"  Row {row_idx}: no valid shift found (would always land on diagonal)")
+            
+            # Save the modified transition matrix
+            save_dir = f"transition_matrix/{dataset_lower}"
+            os.makedirs(save_dir, exist_ok=True)
+            save_filename = f"{cll_type}.txt"
+            save_path = os.path.join(save_dir, save_filename)
+            np.savetxt(save_path, transition_matrix, fmt='%.6f')
+            print(f"Modified transition matrix saved to: {save_path}")
+            
+        
 
     print("Use prepare_cluster_dataset")
     train_data = "train"
     trainset, input_dim, num_classes = prepare_cluster_dataset(input_dataset=input_dataset, data_type=train_data, kmean_cluster=k_cluster, max_train_samples=None, multi_label=False, 
-                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, setup_type=setup_type, aug_type=aug_type, cll_type=cll_type, noise=noise, transition_matrix=transition_matrix)
+                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, setup_type=setup_type, aug_type=aug_type, cll_type=cll_type, noise=noise, transition_matrix=transition_matrix, pretrained_mode=args.pretrained_mode)
     test_data = "test"
     testset, input_dim, num_classes = prepare_cluster_dataset(input_dataset=input_dataset, data_type=test_data, kmean_cluster=k_cluster, max_train_samples=None, multi_label=False, 
-                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, setup_type=setup_type, cll_type=cll_type, noise=noise, transition_matrix=None)
+                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, setup_type=setup_type, cll_type=cll_type, noise=noise, transition_matrix=None, pretrained_mode=args.pretrained_mode)
 
     if algo in ["fwd-u", "fwd-int", "fwd-r", "cpe-f", "cpe-t", "ure-ga"]:
         dataset_T, class_count = get_dataset_T(trainset, num_classes)
@@ -535,6 +618,10 @@ def train_icm(args):
         wandb.log({"train_acc": acc1, "valid_acc": val_acc1, "best_acc": best_acc1.item()})
         with open(f"logs/{algo}-{dataset_name}-{aug_type}-{lr}--{weight_decay}--{imb_factor}--{new_data_aug}.json", "w") as f:
             json.dump(best_acc1.item(), f)
+    
+    # Save model weights
+    save_model_weights(model, args, best_acc1.item())
+    
     wandb.finish()
             
 def train_nn(args):
@@ -727,7 +814,8 @@ if __name__ == "__main__":
         "Dbar_T[prompt]",
         "Dbar[prompt]_T",
         "Dbar[prompt]_T[prompt]",    
-        "Dbar_T"
+        "Dbar_T",
+        "setup 3"
     ]
 
     aug_type = [
@@ -744,6 +832,20 @@ if __name__ == "__main__":
         "mamix_intra_class",
         "orig_mixup",
         "none"
+    ]
+
+    cll_type = [
+        'random', 
+        'least', 
+        'most', 
+        'most_no_noise', 
+        'bias_most', 
+        'bias_least', 
+        'bias_random', 
+        'from_matrix_least', 
+        'from_matrix_most',
+        'most+rand',
+        'least+rand'
     ]
 
     parser = argparse.ArgumentParser()
@@ -781,9 +883,15 @@ if __name__ == "__main__":
     parser.add_argument('--transition_matrix', type=str, default=None, help='Path to transition matrix file (.npy or .txt). If not provided, will auto-load from transition_matrix/')
     parser.add_argument('--new_data_aug', type=str, choices=new_data_aug, help='choose new data aug method', default='none')
     parser.add_argument('--aug_type', type=str, choices=aug_type, help='augmentation type', default='flipflop')
-    parser.add_argument('--cll_type', type=str, choices=['random', 'least', 'most', 'most_no_noise', 'bias_most', 'bias_least', 'bias_random', 'from_matrix_least', 'from_matrix_most'], help='complementary label type', default='random')
+    parser.add_argument('--cll_type', type=str, choices=cll_type, help='complementary label type', default='random')
     parser.add_argument('--gpu', type=int, choices=[0, 1, 2, 3], help='GPU to use for training', default=1)
     parser.add_argument('--noise', type=bool, default=False, help='Whether to use noise in the training dataset')
+
+    parser.add_argument('--save_model', type=str, default='false', help='Whether to save the trained model weights')
+    parser.add_argument('--save_dir', type=str, default='./saved_models', help='Directory to save trained models')
+    parser.add_argument('--model_name_prefix', type=str, default=None, help='Custom prefix for model filename')
+
+    parser.add_argument('--pretrained_mode', type=int, choices=[0,1,2,3], default=0, help='Type of pretrained weights to use for ResNet models')
 
     args = parser.parse_args()
     neighbor = True if args.neighbor.lower()=="true" else False

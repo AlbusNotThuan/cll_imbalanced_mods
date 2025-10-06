@@ -38,12 +38,17 @@ class BaseDataset:
                     else:
                         f.write(f"array([{label}])\n")
             print(f"Saved {len(self.targets)} {self.cll_type} complementary labels to {organized_file_path}")
-        elif self.cll_type in ['least', 'most', 'most_no_noise', 'from_matrix_least', 'from_matrix_most']:
+
+
+        elif self.cll_type in ['least', 'most', 'most_no_noise', 'from_matrix_least', 'from_matrix_most', 'most+rand', 'least+rand']:
             # Use image predictor based on dataset type
             from imb_cll.utils.image_predictor import create_predictor
 
             # if self.cll_type in ['from_matrix_least']: self.cll_type = 'least'
             # if self.cll_type in ['from_matrix_most']: self.cll_type = 'most'
+
+            if self.cll_type in ['most+rand']: self.cll_type = 'most'
+            if self.cll_type in ['least+rand']: self.cll_type = 'least'
 
             # Switch cases for training dataset generated from pretrained model and specific transition matrix
             # This is for 2 cases: Dbar and Dbar[prompt]
@@ -72,7 +77,8 @@ class BaseDataset:
                     mode=self.cll_type if self.cll_type != 'most_no_noise' else 'most',
                     debug=False, 
                     noise=noise_flag,
-                    dataset_type=dataset_type
+                    dataset_type=dataset_type,
+                    pretrained_mode=self.pretrained_mode
                 )
                 
                 # Generate new labels
@@ -90,6 +96,8 @@ class BaseDataset:
                         f.write(f"array([{label[0]}])\n")
                 
                 print(f"Saved {len(generated_labels)} {self.cll_type} complementary labels to {organized_file_path}")
+
+                pdb.set_trace()
                 return  # Skip parsing since we already have the labels
             
             # Parse the string representation of arrays

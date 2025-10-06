@@ -24,7 +24,7 @@ class ImagePredictor:
     image classes from numpy arrays in HWC format (Height, Width, Channels).
     """
 
-    def __init__(self, device=None, pretrained=True, mode='most', debug=False, noise=False):
+    def __init__(self, device=None, pretrained_mode=0, mode='most', debug=False, noise=False):
         """
         Initialize the image predictor.
         
@@ -58,7 +58,7 @@ class ImagePredictor:
         #     print(f"🔧 DEBUG: Loading ResNet18 model (pretrained={pretrained})...")
         
         try:
-            self.model = resnet18(pretrained=pretrained, device=self.device, num_classes=10)
+            self.model = resnet18(pretrained_mode=pretrained_mode, device=self.device, num_classes=10)
             self.model.eval()  # Set to evaluation mode
             
             if self.debug:
@@ -205,7 +205,8 @@ class ImagePredictor:
         # Prepare results based on mode
         if self.mode == 'most':
             results = {
-                'predicted_class': self._get_second_highest_class(probs_array),
+                # 'predicted_class': self._get_second_highest_class(probs_array),
+                'predicted_class': self._get_nth_highest_class(probs_array, 3)
             }
         elif self.mode == 'least':
             results = {
@@ -345,7 +346,7 @@ class ImagePredictor:
 
 
 
-def create_predictor(device=None, pretrained=True, mode='most', debug=True, noise=False, dataset_type="CIFAR10"):
+def create_predictor(device=None, pretrained_mode=0, mode='most', debug=True, noise=False, dataset_type="CIFAR10"):
     """
     Convenience function to create an ImagePredictor instance.
     
@@ -362,12 +363,12 @@ def create_predictor(device=None, pretrained=True, mode='most', debug=True, nois
     """
     if dataset_type == "CIFAR20":
         from .image_predictor_cifar20 import ImagePredictorCIFAR20
-        return ImagePredictorCIFAR20(device=device, pretrained=pretrained, mode=mode, debug=debug, noise=noise)
+        return ImagePredictorCIFAR20(device=device, pretrained_mode=pretrained_mode, mode=mode, debug=debug, noise=noise)
     elif dataset_type == "CIFAR100":
         from .image_predictor_cifar100 import ImagePredictorCIFAR100
-        return ImagePredictorCIFAR100(device=device, pretrained=pretrained, mode=mode, debug=debug, noise=noise)
+        return ImagePredictorCIFAR100(device=device, pretrained_mode=pretrained_mode, mode=mode, debug=debug, noise=noise)
     else:  # Default to CIFAR10
-        return ImagePredictor(device=device, pretrained=pretrained, mode=mode, debug=debug, noise=noise)
+        return ImagePredictor(device=device, pretrained_mode=pretrained_mode, mode=mode, debug=debug, noise=noise)
 
 
 
