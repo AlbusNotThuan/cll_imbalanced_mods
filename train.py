@@ -845,7 +845,9 @@ if __name__ == "__main__":
         'from_matrix_least', 
         'from_matrix_most',
         'most+rand',
-        'least+rand'
+        'least+rand',
+        'third',
+        'fourth'
     ]
 
     parser = argparse.ArgumentParser()
@@ -884,7 +886,7 @@ if __name__ == "__main__":
     parser.add_argument('--new_data_aug', type=str, choices=new_data_aug, help='choose new data aug method', default='none')
     parser.add_argument('--aug_type', type=str, choices=aug_type, help='augmentation type', default='flipflop')
     parser.add_argument('--cll_type', type=str, choices=cll_type, help='complementary label type', default='random')
-    parser.add_argument('--gpu', type=int, choices=[0, 1, 2, 3], help='GPU to use for training', default=1)
+    parser.add_argument('--gpu', type=int, choices=[0, 1, 2, 3, 4], help='GPU to use for training', default=1)
     parser.add_argument('--noise', type=bool, default=False, help='Whether to use noise in the training dataset')
 
     parser.add_argument('--save_model', type=str, default='false', help='Whether to save the trained model weights')

@@ -39,8 +39,7 @@ class BaseDataset:
                         f.write(f"array([{label}])\n")
             print(f"Saved {len(self.targets)} {self.cll_type} complementary labels to {organized_file_path}")
 
-
-        elif self.cll_type in ['least', 'most', 'most_no_noise', 'from_matrix_least', 'from_matrix_most', 'most+rand', 'least+rand']:
+        elif self.cll_type in ['least', 'most', 'most_no_noise', 'from_matrix_least', 'from_matrix_most', 'most+rand', 'least+rand', 'third', 'fourth']:
             # Use image predictor based on dataset type
             from imb_cll.utils.image_predictor import create_predictor
 
@@ -73,7 +72,7 @@ class BaseDataset:
                 print(f"Generating {self.cll_type} complementary labels for {dataset_type}...")
                 print(f"Using image predictor type: {self.cll_type} for dataset: {dataset_type}")
                 self.image_predictor = create_predictor(
-                    device=torch.device('cuda:0'), 
+                    device=torch.device('cuda:4'), 
                     mode=self.cll_type if self.cll_type != 'most_no_noise' else 'most',
                     debug=False, 
                     noise=noise_flag,

@@ -206,7 +206,7 @@ class ImagePredictor:
         if self.mode == 'most':
             results = {
                 # 'predicted_class': self._get_second_highest_class(probs_array),
-                'predicted_class': self._get_nth_highest_class(probs_array, 3)
+                'predicted_class': self._get_second_highest_class(probs_array)
             }
         elif self.mode == 'least':
             results = {
@@ -220,6 +220,14 @@ class ImagePredictor:
                 'predicted_class': self._get_nth_highest_class(probs_array, 1)
             }
             self.noise = old_noise
+        elif self.mode == 'third':
+            results = {
+                'predicted_class': self._get_nth_highest_class(probs_array, 3)
+            }
+        elif self.mode == 'fourth':
+            results = {
+                'predicted_class': self._get_nth_highest_class(probs_array, 4)
+            }
         else:  # default mode returns full results
             results = {
                 'logits': logits.cpu().numpy().flatten(),
@@ -298,11 +306,12 @@ class ImagePredictor:
         """
         available_classes = list(range(10))
 
-        if not self.noise and hasattr(self, 'true_label'):
-            if self.true_label in available_classes:
-                available_classes.remove(self.true_label)
-            if self.debug:
-                print(f"🔧 DEBUG: Removed true label {self.true_label} from consideration.")
+        # disabled true label removal
+        # if not self.noise and hasattr(self, 'true_label'):
+        #     if self.true_label in available_classes:
+        #         available_classes.remove(self.true_label)
+        #     if self.debug:
+        #         print(f"🔧 DEBUG: Removed true label {self.true_label} from consideration.")
 
         if not available_classes:
             return -1
