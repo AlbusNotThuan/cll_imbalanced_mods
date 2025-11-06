@@ -84,28 +84,41 @@ def num_img_per_class(img_max, cls_num, imb_type, imb_factor):
     print("The number samples of each class: {}".format(cls_num_list))
     return cls_num_list
 
-def weighting_calculation(dataset_name, imb_factor, n_weight):
+def weighting_calculation(dataset_name, imb_factor, n_weight, encoder_type='simsiam'):
     if dataset_name == "CIFAR10":
-        if imb_factor == 0.01:
-            # pretrain = "./imb_cll_pretrained/CIFAR10/CIFAR10_checkpoint_0799_-0.7960.pth.tar"
-            pretrain = "./imb_cll_pretrained/CIFAR10/CIFAR10_input32_checkpoint_0799_-0.8011.pth.tar"
-            weights = torch.tensor([1.44308171, 1.14900082, 1.02512971, 0.96447884, 0.93054867, 0.91227983, 0.90093544, 0.89476267, 0.89110236, 0.88867995])
-            # weights = torch.tensor([0.05061136, 0.07689979, 0.12113387, 0.19503667, 0.31880537, 0.52458985, 0.86834894, 1.44262727, 2.40922305, 3.99272382])
-            weights = weights ** n_weight
-        elif imb_factor == 0.02:
-            pretrain = "./imb_cll_pretrained/CIFAR10/CIFAR10_0.02_checkpoint_0799_-0.8122.pth.tar"
-            weights = torch.tensor([1.44308171, 1.14900082, 1.02512971, 0.96447884, 0.93054867, 0.91227983, 0.90093544, 0.89476267, 0.89110236, 0.88867995])
-            # weights = torch.tensor([0.05061136, 0.07689979, 0.12113387, 0.19503667, 0.31880537, 0.52458985, 0.86834894, 1.44262727, 2.40922305, 3.99272382])
-            weights = weights ** n_weight
-        elif imb_factor == 0.1:
-            pretrain = "./imb_cll_pretrained/CIFAR10/CIFAR10_0.1_checkpoint_0799_-0.8381.pth.tar"
-            weights = torch.tensor([1.44308171, 1.14900082, 1.02512971, 0.96447884, 0.93054867, 0.91227983, 0.90093544, 0.89476267, 0.89110236, 0.88867995])
-            # weights = torch.tensor([0.05061136, 0.07689979, 0.12113387, 0.19503667, 0.31880537, 0.52458985, 0.86834894, 1.44262727, 2.40922305, 3.99272382])
-            weights = weights ** n_weight
-        elif imb_factor == 1:
-            pretrain = "./balanced_cll_pretrained/CIFAR10/CIFAR10_checkpoint_0799_-0.8583.pth.tar"
-            weights = torch.tensor([1.44308171, 1.14900082, 1.02512971, 0.96447884, 0.93054867, 0.91227983, 0.90093544, 0.89476267, 0.89110236, 0.88867995])
-            weights = weights ** n_weight
+        if encoder_type == 'simsiam':
+            if imb_factor == 0.01:
+                # pretrain = "./imb_cll_pretrained/CIFAR10/CIFAR10_checkpoint_0799_-0.7960.pth.tar"
+                pretrain = "./imb_cll_pretrained/cifar10/cifar10_input32_checkpoint_0799_-0.8011.pth.tar"
+                weights = torch.tensor([1.44308171, 1.14900082, 1.02512971, 0.96447884, 0.93054867, 0.91227983, 0.90093544, 0.89476267, 0.89110236, 0.88867995])
+                # weights = torch.tensor([0.05061136, 0.07689979, 0.12113387, 0.19503667, 0.31880537, 0.52458985, 0.86834894, 1.44262727, 2.40922305, 3.99272382])
+                weights = weights ** n_weight
+            elif imb_factor == 0.02:
+                pretrain = "./imb_cll_pretrained/cifar10/cifar10_0.02_checkpoint_0799_-0.8122.pth.tar"
+                weights = torch.tensor([1.44308171, 1.14900082, 1.02512971, 0.96447884, 0.93054867, 0.91227983, 0.90093544, 0.89476267, 0.89110236, 0.88867995])
+                # weights = torch.tensor([0.05061136, 0.07689979, 0.12113387, 0.19503667, 0.31880537, 0.52458985, 0.86834894, 1.44262727, 2.40922305, 3.99272382])
+                weights = weights ** n_weight
+            elif imb_factor == 0.1:
+                pretrain = "./imb_cll_pretrained/cifar10/cifar10_0.1_checkpoint_0799_-0.8381.pth.tar"
+                weights = torch.tensor([1.44308171, 1.14900082, 1.02512971, 0.96447884, 0.93054867, 0.91227983, 0.90093544, 0.89476267, 0.89110236, 0.88867995])
+                # weights = torch.tensor([0.05061136, 0.07689979, 0.12113387, 0.19503667, 0.31880537, 0.52458985, 0.86834894, 1.44262727, 2.40922305, 3.99272382])
+                weights = weights ** n_weight
+            elif imb_factor == 1:
+                pretrain = "./balanced_cll_pretrained/cifar10/cifar10_checkpoint_0799_-0.8583.pth.tar"
+                weights = torch.tensor([1.44308171, 1.14900082, 1.02512971, 0.96447884, 0.93054867, 0.91227983, 0.90093544, 0.89476267, 0.89110236, 0.88867995])
+                weights = weights ** n_weight
+
+        elif encoder_type == 'byol':
+            if imb_factor == 1:
+                pretrain = "./balanced_cll_pretrained/cifar10/cifar10_byol_0799.ckpt"
+                weights = torch.tensor([1.44308171, 1.14900082, 1.02512971, 0.96447884, 0.93054867, 0.91227983, 0.90093544, 0.89476267, 0.89110236, 0.88867995])
+                weights = weights ** n_weight
+
+        elif encoder_type == 'mocov3':
+            if imb_factor == 1:
+                pretrain = "./balanced_cll_pretrained/cifar10/cifar10_mocov3_0799.ckpt"
+                weights = torch.tensor([1.44308171, 1.14900082, 1.02512971, 0.96447884, 0.93054867, 0.91227983, 0.90093544, 0.89476267, 0.89110236, 0.88867995])
+                weights = weights ** n_weight
     elif dataset_name == "PCLCIFAR10":
         if imb_factor == 0.01:
             # pretrain = "./imb_cll_pretrained/CIFAR10/CIFAR10_checkpoint_0799_-0.7960.pth.tar"

@@ -1128,7 +1128,7 @@ def plot_transition_matrices(df, true_col='true', figsize=(8, 6), dpi=300, inclu
         # Save transition matrix to file if savepath is provided
         if savepath is not None and not transition_props[col].empty:
             try:
-                actual_savepath = f"{savepath}/{col}.txt" if len(pred_cols) > 1 else savepath
+                actual_savepath = f"{savepath}/{col}.txt" if len(pred_cols) >= 1 else savepath
                 
                 # Save as space-delimited text file (like the existing transition matrix files)
                 np.savetxt(actual_savepath, transition_props[col].values, fmt='%.6f')
@@ -1238,10 +1238,10 @@ def plot_transition_matrix_from_file(file_path, matrix_name="Transition Matrix",
                                index=class_labels, 
                                columns=class_labels)
         
-        # Perform matrix analysis if requested
+        # Perform matrix analysis if requested (same as plot_transition_matrices)
         matrix_analysis = None
         if analyze_matrix:
-            matrix_analysis = analyze_matrix_properties(transition_matrix, matrix_name)
+            matrix_analysis = analyze_matrix_properties(transition_matrix, matrix_name, verbose=True)
         
         # Create heatmap if we have valid data
         if not df_matrix.empty and df_matrix.size > 0:
@@ -1522,3 +1522,58 @@ def verify_cifar_data_indexing(dataset_name, num_samples=3, data_path_override=N
     
     return verification_passed
 
+def normalize_and_save_transition_matrix(filepath, normalize_type='row'):
+    """
+    Load a transition matrix, normalize it, and save back to the same file.
+    
+    Args:
+        filepath: Path to the transition matrix file
+        normalize_type: 'row' (default) - rows sum to 1, P(predicted|true)
+                       'col' - columns sum to 1, P(true|predicted)
+    """
+    import numpy as np
+    
+    # Load the transition matrix
+    print(f"Loading transition matrix from: {filepath}")
+    matrix = np.loadtxt(filepath)
+    
+    print(f"Original matrix shape: {matrix.shape}")
+    print(f"Original matrix:\n{matrix}")
+    
+    # Normalize the matrix
+    if normalize_type == 'row':
+        # Row normalization: each row sums to 1
+        row_sums = matrix.sum(axis=1, keepdims=True)
+        # Avoid division by zero
+        row_sums[row_sums == 0] = 1
+        normalized_matrix = matrix / row_sums
+        print("\n✅ Row-normalized (rows sum to 1) - P(predicted|true)")
+        
+    elif normalize_type == 'col':
+        # Column normalization: each column sums to 1
+        col_sums = matrix.sum(axis=0, keepdims=True)
+        # Avoid division by zero
+        col_sums[col_sums == 0] = 1
+        normalized_matrix = matrix / col_sums
+        print("\n✅ Column-normalized (columns sum to 1) - P(true|predicted)")
+        
+    else:
+        raise ValueError(f"Unknown normalize_type: {normalize_type}. Use 'row' or 'col'.")
+    
+    print(f"Normalized matrix:\n{normalized_matrix}")
+    
+    # Verify normalization
+    if normalize_type == 'row':
+        row_sums_after = normalized_matrix.sum(axis=1)
+        print(f"\nRow sums after normalization: {row_sums_after}")
+        print(f"All rows sum to ~1.0: {np.allclose(row_sums_after, 1.0)}")
+    else:
+        col_sums_after = normalized_matrix.sum(axis=0)
+        print(f"\nColumn sums after normalization: {col_sums_after}")
+        print(f"All columns sum to ~1.0: {np.allclose(col_sums_after, 1.0)}")
+    
+    # Save back to the same file
+    np.savetxt(filepath, normalized_matrix, fmt='%.6f')
+    print(f"\n💾 Normalized matrix saved to: {filepath}")
+    
+    return normalized_matrix

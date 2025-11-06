@@ -228,6 +228,10 @@ class ImagePredictor:
             results = {
                 'predicted_class': self._get_nth_highest_class(probs_array, 4)
             }
+        elif self.mode == 'eighth':
+            results = {
+                'predicted_class': self._get_nth_highest_class(probs_array, 8)
+            }
         else:  # default mode returns full results
             results = {
                 'logits': logits.cpu().numpy().flatten(),

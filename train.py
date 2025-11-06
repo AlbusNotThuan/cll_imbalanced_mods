@@ -37,6 +37,7 @@ def save_model_weights(model, args, best_acc):
     aug_type = args.aug_type
     new_data_aug = args.new_data_aug
     cll_type = args.cll_type
+    gamma = args.gamma
     
     # Custom prefix if provided
     prefix = args.model_name_prefix if args.model_name_prefix else ""
@@ -89,6 +90,10 @@ def train_icm(args):
     k_mean_targets = []
     cll_type = args.cll_type
     noise = args.noise
+    gamma = args.gamma
+    comp_loss_type = args.comp_loss_type
+    max_train_samples = args.max_train_samples
+    encoder_type = args.encoder_type
     print("="*28)
 
     np.random.seed(seed)
@@ -102,7 +107,7 @@ def train_icm(args):
     elif new_data_aug == "cl_aug":
         print("Use mixup noise-free")
 
-    weights, pretrain = weighting_calculation(input_dataset, imb_factor, n_weight)
+    weights, pretrain = weighting_calculation(input_dataset, imb_factor, n_weight, encoder_type=encoder_type)
 
     # Load transition matrix if specified
     transition_matrix = None
@@ -195,13 +200,25 @@ def train_icm(args):
 
     print("Use prepare_cluster_dataset")
     train_data = "train"
-    trainset, input_dim, num_classes = prepare_cluster_dataset(input_dataset=input_dataset, data_type=train_data, kmean_cluster=k_cluster, max_train_samples=None, multi_label=False, 
-                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, setup_type=setup_type, aug_type=aug_type, cll_type=cll_type, noise=noise, transition_matrix=transition_matrix, pretrained_mode=args.pretrained_mode)
+    trainset, input_dim, num_classes = prepare_cluster_dataset(
+        input_dataset=input_dataset, data_type=train_data, kmean_cluster=k_cluster, 
+        max_train_samples=max_train_samples, multi_label=False, augment=data_aug, imb_type=imb_type, 
+        imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, 
+        setup_type=setup_type, aug_type=aug_type, cll_type=cll_type, noise=noise, 
+        transition_matrix=transition_matrix, pretrained_mode=args.pretrained_mode,
+        ba_config=ba_config, mi_config=mi_config, ord_num=args.ord_num
+    )
     test_data = "test"
-    testset, input_dim, num_classes = prepare_cluster_dataset(input_dataset=input_dataset, data_type=test_data, kmean_cluster=k_cluster, max_train_samples=None, multi_label=False, 
-                                    augment=data_aug, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, setup_type=setup_type, cll_type=cll_type, noise=noise, transition_matrix=None, pretrained_mode=args.pretrained_mode)
+    testset, input_dim, num_classes = prepare_cluster_dataset(
+        input_dataset=input_dataset, data_type=test_data, kmean_cluster=k_cluster, 
+        max_train_samples=max_train_samples, multi_label=False, augment=data_aug, imb_type=imb_type, 
+        imb_factor=imb_factor, pretrain=pretrain, transition_bias=transition_bias, 
+        setup_type=setup_type, cll_type=cll_type, noise=noise, transition_matrix=None, 
+        pretrained_mode=args.pretrained_mode,
+        ba_config=None, mi_config=None , ord_num=args.ord_num
+    )
 
-    if algo in ["fwd-u", "fwd-int", "fwd-r", "cpe-f", "cpe-t", "ure-ga"]:
+    if algo in ["fwd-u", "fwd-int", "fwd-r", "cpe-f", "cpe-t", "ure-ga", "comb-oc"]:
         dataset_T, class_count = get_dataset_T(trainset, num_classes)
         class_count = torch.tensor(class_count, dtype=torch.float).to(device)
 
@@ -225,7 +242,7 @@ def train_icm(args):
         else: 
             Q = dataset_T
 
-    elif algo == "fwd-int":
+    elif algo == "fwd-int" or algo == "comb-oc":
         # Print the complementary label distribution T
         dataset_T = torch.tensor(dataset_T, dtype=torch.float).to(device)
         U = np.full([num_classes, num_classes], 1/(num_classes-1))
@@ -264,7 +281,7 @@ def train_icm(args):
         model.register_parameter(name="Q", param=Q_param)
 
     wandb.login(key="34c0326efeca580933e7197c24ed98c4512659e7")
-    wandb.init(project=args.dataset_name, name=f"{algo}-{dataset_name}-{imb_factor}-{lr}-{weight_decay}-{epochs}-{aug_type}-{new_data_aug}", config={"lr": lr, "weight_decay": weight_decay, "epochs": epochs, "aug_type": aug_type, "algo": algo, "new_data_aug": new_data_aug}, tags=[str(imb_factor)])
+    wandb.init(project=args.dataset_name, name=f"{algo}-{dataset_name}-{imb_factor}-{lr}-{weight_decay}-{epochs}-{aug_type}-{new_data_aug}-{gamma}", config={"lr": lr, "weight_decay": weight_decay, "epochs": epochs, "aug_type": aug_type, "algo": algo, "new_data_aug": new_data_aug}, tags=[str(imb_factor)])
     # Ensure the logs directory exists
     os.makedirs("logs", exist_ok=True)
 
@@ -306,9 +323,16 @@ def train_icm(args):
 
         total_count_error = 0
 
-        for i, (inputs, labels, true_labels, k_mean_targets, img_max) in enumerate(trainloader):
-            inputs, labels, true_labels, k_mean_targets = inputs.to(device), labels.to(device), true_labels.to(device), k_mean_targets.to(device)
+        for i, (inputs, labels, true_labels, k_mean_targets, img_max, label_type) in enumerate(trainloader):
+            # Calculate counts from label_type
+            label_type = label_type.to(device)
+            ord_mask = (label_type == 1).float()
+            cll_mask = (label_type == 0).float()
+            M = ord_mask.sum().item()
+            N = cll_mask.sum().item()
+            # print("N = {}, M = {}".format(N, M))
 
+            inputs, labels, true_labels, k_mean_targets = inputs.to(device), labels.to(device), true_labels.to(device), k_mean_targets.to(device)
             # Ha comment 31/08/2025
             # breakpoint()
             # classes, class_counts = np.unique(labels.cpu().numpy(), return_counts=True)
@@ -545,6 +569,51 @@ def train_icm(args):
                     q = torch.mm(p_softmax, Q_learnable).clamp(1e-6, 1.0)
                     labels = labels.squeeze().long()
                     loss = F.nll_loss(q.log(), labels, weights)
+
+                elif algo == "comb-oc": # Combine Ordinary + CLL
+                    # Cross entropy loss for true labels
+                    loss_true = F.cross_entropy(outputs, true_labels, reduction='none')
+                    loss_true = loss_true * ord_mask # Apply the mask
+                    if M > 0:
+                        loss_true = loss_true.sum() / M  # Calculate the mean of the masked losses
+                    else:
+                        loss_true = torch.tensor(0.0, requires_grad=True)
+
+                    # pdb.set_trace()
+
+                    # Remove diagonal elements from Q
+                    Q = Q.clone()
+                    for c in range(num_classes):
+                        Q[c, c] = 0.0
+
+                    # Normalize rows to sum to 1
+                    Q = Q / Q.sum(dim=1, keepdim=True)
+                    
+                    # Complementary loss based on comp_loss_type
+                    if comp_loss_type == "scl":
+                        q = (1 - F.softmax(outputs, dim=1) + 1e-6).log()
+                    elif comp_loss_type == "fwd":
+                        q = torch.mm(F.softmax(outputs, dim=1), Q).clamp(1e-8, 1-1e-8).log()
+                    elif comp_loss_type == "cpe":
+                        p_softmax = F.softmax(outputs, dim=1)
+                        q = torch.mm(p_softmax, Q).clamp(1e-6, 1.0).log()
+                    else:
+                        raise ValueError(f"Unknown comp_loss_type: {comp_loss_type}")
+
+                    labels = labels.squeeze()
+                    labels = labels.long()
+                    loss_comp  = F.nll_loss(q, labels, reduction='none', weight=weights)
+                    loss_comp = loss_comp * cll_mask  # Apply the mask
+                    if N > 0:
+                        loss_comp = loss_comp.sum() / N  # Calculate the mean of the masked losses
+                    else:
+                        loss_comp = torch.tensor(0.0, requires_grad=True)
+
+                    # pdb.set_trace()
+                    combined_ordinary_cll_loss = gamma * loss_true + (1 - gamma) * (num_classes - 1) * loss_comp
+                    # combined_ordinary_cll_loss = gamma * loss_true + (1 - gamma) * loss_comp
+
+                    loss = combined_ordinary_cll_loss
                     
                 else:
                     raise NotImplementedError
@@ -764,7 +833,7 @@ def train_nn(args):
               
 
 if __name__ == "__main__":
-    print(torch.__version__)
+    # print(torch.__version__)
     torch.cuda.empty_cache()
     dataset_list = [
         "CIFAR10",
@@ -792,7 +861,8 @@ if __name__ == "__main__":
         "mcl-log",
         "cpe-i",
         "cpe-t",
-        "cpe-f"
+        "cpe-f",
+        "comb-oc"
     ]
 
     model_list = [
@@ -847,7 +917,18 @@ if __name__ == "__main__":
         'most+rand',
         'least+rand',
         'third',
-        'fourth'
+        'fourth',
+        'custom_mnist',
+        'eighth',
+        'custom_random',
+        'clip_llava_most',
+        'clip_llava_least',
+        'ord_500_random'
+    ]
+    encoder_choices = [
+        'simsiam',
+        'byol',
+        'mocov3'
     ]
 
     parser = argparse.ArgumentParser()
@@ -857,19 +938,20 @@ if __name__ == "__main__":
     parser.add_argument('--lr', type=float, help='Learning rate', default=1e-3)
     parser.add_argument('--weight_decay', type=float, default=1e-5)
     parser.add_argument('--seed', type=int, help='Random seed', default=1126)
-    parser.add_argument('--data_aug', type=str, default='false')
+    parser.add_argument('--data_aug', type=str, default='true')
     parser.add_argument('--max_train_samples', type=int, default=None)
     parser.add_argument('--evaluate_step', type=int, default=10)
     parser.add_argument("--hidden_dim", type=int, default=500)
     parser.add_argument('--k_cluster', type=int, default=0)
-    parser.add_argument('--n_epoch', type=int, default=160)
-    parser.add_argument('--warm_epoch', type=int, default=128)
+    parser.add_argument('--n_epoch', type=int, default=300)
+    parser.add_argument('--warm_epoch', type=int, default=240)
     parser.add_argument('--batch_size', type=int, default=512)
     parser.add_argument('--multi_label', action='store_true')
-    parser.add_argument('--imb_type', type=str, default=None)
+    parser.add_argument('--imb_type', type=str, default='exp')
     parser.add_argument('--imb_factor', type=float, default=1.0)
     parser.add_argument('--weighting', type=int, default=0)
     parser.add_argument('--mixup', type=str, default='false')
+    parser.add_argument('--gamma', type=float, default=0.5)
     # parser.add_argument('--icm', type=str, default='false')
     # parser.add_argument('--micm', type=str, default='false')
     # parser.add_argument('--four_images_intra_class', type=str, default='false')
@@ -888,6 +970,27 @@ if __name__ == "__main__":
     parser.add_argument('--cll_type', type=str, choices=cll_type, help='complementary label type', default='random')
     parser.add_argument('--gpu', type=int, choices=[0, 1, 2, 3, 4], help='GPU to use for training', default=1)
     parser.add_argument('--noise', type=bool, default=False, help='Whether to use noise in the training dataset')
+    parser.add_argument('--ord_num', type=int, default=0, help='Number of ordinary samples per class for comb-oc')
+    parser.add_argument('--comp_loss_type', type=str, choices=['scl', 'fwd', 'cpe'], default='fwd', help='Complementary loss type for comb-oc algorithm')
+    parser.add_argument('--encoder_type', type=str, choices=encoder_choices, default='byol', help='Type of encoder for icm encoder network')
+
+    # Blahut-Arimoto augmentation parameters
+    parser.add_argument('--use_blahut', type=str, default='false', help='Enable Blahut-Arimoto transition matrix augmentation')
+    parser.add_argument('--ba_strength', type=float, default=0.1, help='BA augmentation strength in [0,1]. Higher = more smoothing')
+    parser.add_argument('--ba_row_mode', type=str, choices=['uniform', 'q'], default='uniform', help='BA target distribution: uniform or q')
+    parser.add_argument('--ba_gamma', type=float, default=1.0, help='BA per-row strength contrast exponent')
+    parser.add_argument('--ba_max_iters', type=int, default=500, help='BA algorithm maximum iterations')
+    parser.add_argument('--ba_tol', type=float, default=1e-6, help='BA convergence tolerance')
+    parser.add_argument('--ba_preserve_diagonal', type=str, default='false', help='Preserve diagonal elements during BA augmentation')
+    parser.add_argument('--ba_save', type=str, default='true', help='Save augmented transition matrix to file')
+
+    # MI optimization parameters
+    parser.add_argument('--use_mi_optimization', type=str, default='false', help='Enable MI maximization optimization')
+    parser.add_argument('--mi_learning_rate', type=float, default=0.05, help='MI optimization learning rate (gradient ascent step size)')
+    parser.add_argument('--mi_epsilon', type=float, default=1e-6, help='MI optimization convergence tolerance')
+    parser.add_argument('--mi_max_iters', type=int, default=2000, help='MI optimization maximum iterations')
+    parser.add_argument('--mi_budget', type=float, default=None, help='MI optimization budget constraint (Frobenius norm limit)')
+    parser.add_argument('--mi_save', type=str, default='true', help='Save MI-optimized transition matrix to file')
 
     parser.add_argument('--save_model', type=str, default='false', help='Whether to save the trained model weights')
     parser.add_argument('--save_dir', type=str, default='./saved_models', help='Directory to save trained models')
@@ -896,6 +999,39 @@ if __name__ == "__main__":
     parser.add_argument('--pretrained_mode', type=int, choices=[0,1,2,3], default=0, help='Type of pretrained weights to use for ResNet models')
 
     args = parser.parse_args()
+    
+    # Parse boolean flags for BA parameters
+    use_blahut = True if args.use_blahut.lower() == 'true' else False
+    ba_preserve_diagonal = True if args.ba_preserve_diagonal.lower() == 'true' else False
+    ba_save = True if args.ba_save.lower() == 'true' else False
+    
+    # Parse boolean flags for MI parameters
+    use_mi_optimization = True if args.use_mi_optimization.lower() == 'true' else False
+    mi_save = True if args.mi_save.lower() == 'true' else False
+    
+    # Create BA configuration dictionary
+    ba_config = {
+        'use_blahut': use_blahut,
+        'strength': args.ba_strength,
+        'row_mode': args.ba_row_mode,
+        'gamma': args.ba_gamma,
+        'max_iters': args.ba_max_iters,
+        'tol': args.ba_tol,
+        'preserve_diagonal': ba_preserve_diagonal,
+        'save': ba_save
+    }
+    
+    # Create MI configuration dictionary
+    mi_config = {
+        'use_mi_optimization': use_mi_optimization,
+        'learning_rate': args.mi_learning_rate,
+        'epsilon': args.mi_epsilon,
+        'max_iters': args.mi_max_iters,
+        'budget': args.mi_budget,
+        'P_y': None,  # Will use uniform distribution by default
+        'save': mi_save
+    }
+    
     neighbor = True if args.neighbor.lower()=="true" else False
     if neighbor:
         train_nn(args)

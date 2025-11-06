@@ -179,11 +179,14 @@ class CLCIFAR10(VisionDataset, BaseDataset):
         input_dataset=None,
         transition_bias=1.0,
         setup_type=None,
-        aug_type = None,
+        aug_type=None,
         cll_type='random',
         noise=False,
         transition_matrix=None,
         pretrained_mode=0,
+        ba_config=None,
+        mi_config=None,
+        ord_num=None
     ):
         self.root = root
         self.data_type = data_type
@@ -201,6 +204,11 @@ class CLCIFAR10(VisionDataset, BaseDataset):
         self.transition_matrix = transition_matrix
         self.dataset_name = "CIFAR10"  # Add dataset name attribute
         self.pretrained_mode = pretrained_mode
+        
+        # Store BA and MI configurations
+        self.ba_config = ba_config
+        self.mi_config = mi_config
+        self.ord_num = ord_num
 
         super(CLCIFAR10, self).__init__(
             root, train, transform, target_transform)
@@ -209,6 +217,7 @@ class CLCIFAR10(VisionDataset, BaseDataset):
         self.validate = validate
         self.pretrain = pretrain
         self.seed = seed
+        self.max_train_samples = max_train_samples
 
         if seed is None:
             raise RuntimeError('Seed is not specified.')
@@ -254,11 +263,18 @@ class CLCIFAR10(VisionDataset, BaseDataset):
                 print("Done: Generate imbalanced data")
             else:
                 self.img_max =  len(self.data) / self.num_classes
-            
-            if max_train_samples: #limit the size of the training dataset to max_train_samples
-                train_len = min(len(self.data), max_train_samples)
+
+            if self.max_train_samples: #limit the size of the training dataset to max_train_samples
+                train_len = min(len(self.data), self.max_train_samples)
                 self.data = self.data[:train_len]
                 self.targets = self.targets[:train_len]
+
+                print(f"Training dataset limited to {train_len} samples.")
+
+            # Only generate ordinary/CLL split if ord_num is specified (for comb-oc)
+            if self.ord_num is not None and self.ord_num > 0:
+                self.gen_few_ordinary_target()
+                print(f"Number of ordinary samples per class: {self.ord_num}")
             
             if self.setup_type == "setup 1":
                 self.gen_complementary_target()
@@ -268,21 +284,22 @@ class CLCIFAR10(VisionDataset, BaseDataset):
                 print("Using Dbar[prompt]")
                 # if self.transition_matrix is None:
                 #     raise ValueError("transition_matrix must be provided for setup_type 'transition_matrix'")
-                self.generate_cl_from_matrix(self.transition_matrix)
+                self.generate_cl_from_matrix(
+                    self.transition_matrix,
+                    ba_config=self.ba_config,
+                    mi_config=self.mi_config
+                )
             elif self.setup_type == "Dbar_T[prompt]" or self.setup_type == "Dbar_T":
                 print("Using Dbar")
                 self.gen_complementary_target()
-                
-
 
             # if self.setup_type == "transition_bias":
             #     self.gen_bias_complementary_label()
             # elif self.setup_type == "ordinary_imb":
             #     self.gen_complementary_target()
         
-        # self.rng = np.random.default_rng(self.seed)
-        # self.idx = self.rng.permutation(len(self.data))
-
+        self.rng = np.random.default_rng(self.seed)
+        self.idx = self.rng.permutation(len(self.data))
         self.idx_train = len(self.data)
         # print("The range of index {}".format(self.idx_train[:10]))
 
@@ -373,6 +390,12 @@ class CLCIFAR10(VisionDataset, BaseDataset):
         if self.data_type == "train":
             img, targets, true_targets, k_mean_targets = self.data[index], self.targets[index], self.true_targets[index], self.k_mean_targets[index]
 
+            # Get label type: 1 = ordinary, 0 = complementary
+            if hasattr(self, 'label_type'):
+                label_type = self.label_type[index]
+            else:
+                label_type = 0  # Default: all complementary
+        
         if self.data_type == "test":
             img, targets = self.data[index], self.targets[index]
 
@@ -387,7 +410,7 @@ class CLCIFAR10(VisionDataset, BaseDataset):
             targets = self.target_transform(targets)
 
         if self.data_type == "train":
-            return img, targets, true_targets, k_mean_targets, self.img_max
+            return img, targets, true_targets, k_mean_targets, self.img_max, label_type
         else:
             return img, targets
     
@@ -437,7 +460,11 @@ class CLCIFAR10(VisionDataset, BaseDataset):
             print(self.pretrain)
 
             checkpoint = torch.load(self.pretrain, map_location="cpu")
-            state_dict = checkpoint['state_dict']
+            # Handle both .pth.tar and .ckpt formats
+            if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
+                state_dict = checkpoint['state_dict']
+            else:
+                state_dict = checkpoint
             for k in list(state_dict.keys()):
                 # retain only encoder up to before the embedding layer
                 if k.startswith('module.encoder') and not k.startswith('module.encoder.fc'):
@@ -466,6 +493,8 @@ class CLCIFAR10(VisionDataset, BaseDataset):
         print("The number of each sample into each cluster is {}".format(sorted_list))
 
         return cluster_labels
+
+    
     
 
 class CLCIFAR100(CLCIFAR10):
@@ -491,7 +520,7 @@ class CLCIFAR100(CLCIFAR10):
     }
 
     def __init__(self,
-        root= None,
+        root=None,
         train=True,
         data_type=None,
         transform=None,
@@ -509,10 +538,14 @@ class CLCIFAR100(CLCIFAR10):
         input_dataset=None,
         transition_bias=1.0,
         setup_type=None,
-        aug_type = None,
+        aug_type=None,
         cll_type='random',
         noise=False,
-        transition_matrix=None
+        transition_matrix=None,
+        pretrained_mode=0,
+        ba_config=None,
+        mi_config=None,
+        ord_num=None
     ):
         self.data_type = data_type
         self.num_classes = 100
@@ -527,7 +560,13 @@ class CLCIFAR100(CLCIFAR10):
         self.cll_type = cll_type
         self.noise = noise
         self.transition_matrix = transition_matrix
+        self.pretrained_mode = pretrained_mode
+        self.ord_num = ord_num
         self.dataset_name = "CIFAR100"  # Add dataset name attribute
+        
+        # Store BA and MI configurations
+        self.ba_config = ba_config
+        self.mi_config = mi_config
 
         self.train = train
         self.validate = validate
@@ -585,10 +624,27 @@ class CLCIFAR100(CLCIFAR10):
                 self.data = self.data[:train_len]
                 self.targets = self.targets[:train_len]
 
+            # Only generate ordinary/CLL split if ord_num is specified (for comb-oc)
+            if self.ord_num is not None and self.ord_num > 0:
+                self.gen_few_ordinary_target()
+                print(f"Number of ordinary samples per class: {self.ord_num}")
+
             if self.setup_type == "setup 1":
                 self.gen_complementary_target()
             elif self.setup_type == "setup 2":
                 self.gen_bias_complementary_label()
+            elif self.setup_type == "transition_matrix" or self.setup_type == "Dbar[prompt]_T" or self.setup_type == "Dbar[prompt]_T[prompt]":
+                print("Using Dbar[prompt]")
+                # if self.transition_matrix is None:
+                #     raise ValueError("transition_matrix must be provided for setup_type 'transition_matrix'")
+                self.generate_cl_from_matrix(
+                    self.transition_matrix,
+                    ba_config=self.ba_config,
+                    mi_config=self.mi_config
+                )
+            elif self.setup_type == "Dbar_T[prompt]" or self.setup_type == "Dbar_T":
+                print("Using Dbar")
+                self.gen_complementary_target()
         
         self.idx_train = len(self.data)
         self.mean, self.std = [0.5071, 0.4865, 0.4409], [0.2673, 0.2564, 0.2762]
@@ -668,6 +724,12 @@ class CLCIFAR100(CLCIFAR10):
         if self.data_type == "train":
             img, targets, true_targets, k_mean_targets = self.data[index], self.targets[index], self.true_targets[index], self.k_mean_targets[index]
 
+            # Get label type: 1 = ordinary, 0 = complementary
+            if hasattr(self, 'label_type'):
+                label_type = self.label_type[index]
+            else:
+                label_type = 0  # Default: all complementary
+
         if self.data_type == "test":
             img, targets = self.data[index], self.targets[index]
 
@@ -682,7 +744,7 @@ class CLCIFAR100(CLCIFAR10):
             targets = self.target_transform(targets)
 
         if self.data_type == "train":
-            return img, targets, true_targets, k_mean_targets, self.img_max
+            return img, targets, true_targets, k_mean_targets, self.img_max, label_type
         else:
             return img, targets
     
@@ -716,7 +778,7 @@ class CLCIFAR20(CLCIFAR100):
     }
 
     def __init__(self,
-        root= None,
+        root=None,
         train=True,
         data_type=None,
         transform=None,
@@ -734,10 +796,14 @@ class CLCIFAR20(CLCIFAR100):
         input_dataset=None,
         transition_bias=1.0,
         setup_type=None,
-        aug_type = None,
+        aug_type=None,
         cll_type='random',
         noise=False,
-        transition_matrix=None
+        transition_matrix=None,
+        pretrained_mode=0,
+        ba_config=None,
+        mi_config=None,
+        ord_num=None
     ):
         self.data_type = data_type
         self.num_classes = 20
@@ -752,7 +818,13 @@ class CLCIFAR20(CLCIFAR100):
         self.cll_type = cll_type
         self.noise = noise
         self.transition_matrix = transition_matrix
+        self.pretrained_mode = pretrained_mode
+        self.ord_num = ord_num
         self.dataset_name = "CIFAR20"  # Add dataset name attribute
+        
+        # Store BA and MI configurations
+        self.ba_config = ba_config
+        self.mi_config = mi_config
 
         self.train = train
         self.validate = validate
@@ -814,6 +886,11 @@ class CLCIFAR20(CLCIFAR100):
                 self.data = self.data[:train_len]
                 self.targets = self.targets[:train_len]
             
+            # Only generate ordinary/CLL split if ord_num is specified (for comb-oc)
+            if self.ord_num is not None and self.ord_num > 0:
+                self.gen_few_ordinary_target()
+                print(f"Number of ordinary samples per class: {self.ord_num}")
+            
             if self.setup_type == "setup 1":
                 self.gen_complementary_target()
             elif self.setup_type == "setup 2":
@@ -822,7 +899,11 @@ class CLCIFAR20(CLCIFAR100):
                 print("Using Dbar[prompt]")
                 # if self.transition_matrix is None:
                 #     raise ValueError("transition_matrix must be provided for setup_type 'transition_matrix'")
-                self.generate_cl_from_matrix(self.transition_matrix)
+                self.generate_cl_from_matrix(
+                    self.transition_matrix,
+                    ba_config=self.ba_config,
+                    mi_config=self.mi_config
+                )
             elif self.setup_type == "Dbar_T[prompt]" or self.setup_type == "Dbar_T":
                 print("Using Dbar")
                 self.gen_complementary_target()
@@ -906,6 +987,12 @@ class CLCIFAR20(CLCIFAR100):
         if self.data_type == "train":
             img, targets, true_targets, k_mean_targets = self.data[index], self.targets[index], self.true_targets[index], self.k_mean_targets[index]
 
+            # Get label type: 1 = ordinary, 0 = complementary
+            if hasattr(self, 'label_type'):
+                label_type = self.label_type[index]
+            else:
+                label_type = 0  # Default: all complementary
+
         if self.data_type == "test":
             img, targets = self.data[index], self.targets[index]
 
@@ -920,7 +1007,7 @@ class CLCIFAR20(CLCIFAR100):
             targets = self.target_transform(targets)
 
         if self.data_type == "train":
-            return img, targets, true_targets, k_mean_targets, self.img_max
+            return img, targets, true_targets, k_mean_targets, self.img_max, label_type
         else:
             return img, targets
     

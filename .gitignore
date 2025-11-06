@@ -4,3 +4,5 @@ logs/*
 wandb/*
 *.tar
 *.png
+*.ckpt
+balanced_cll_pretrained/
