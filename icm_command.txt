@@ -1,1 +1,1 @@
-python train.py --algo=scl-nl --dataset_name CIFAR10 --model resnet18 --imb_type exp --imb_factor 1 --mixup true --alpha 0.2 --k_cluster 50 --new_data_aug icm --data_aug true --aug_type flipflop --encoder_type mocov3 --gpucb
+python train.py --algo=scl-nl --dataset_name CIFAR10 --model resnet18 --imb_type exp --imb_factor 1 --mixup true --alpha 0.2 --k_cluster 50 --new_data_aug icm --mixup true --data_aug true --aug_type flipflop --encoder_type mocov3 --gpu

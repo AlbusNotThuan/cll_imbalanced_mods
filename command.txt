@@ -2,3 +2,8 @@ python train.py --algo=cpe-f --dataset_name CIFAR10 --model resnet18 --imb_type 
 python train.py --algo=fwd-int --dataset_name CIFAR10 --model resnet18 --imb_type exp  --data_aug true --aug_type flipflop --setup_type Dbar_T[prompt] --cll_type most --gpu 3
 
 python train.py --algo=comb-oc --dataset_name CIFAR10 --setup_type Dbar_T --ord_num 100 --gamma 0.5 --cll_type most --gpu 0 
+
+python train.py --algo=fwd-int --dataset_name CIFAR20 --setup_type Dbar[prompt]_T --cll_type clip_llava_top_most --gpu 0
+
+python train.py --algo=cpe-f --dataset_name CIFAR10 --setup_type Dbar[prompt]_T --cll_type llava-random --gpu 0
+

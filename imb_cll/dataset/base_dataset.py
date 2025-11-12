@@ -30,17 +30,17 @@ class BaseDataset:
                 for i in range(len(self.targets))
             ]
             
-            # Save generated labels to file
-            dataset_type = getattr(self, 'dataset_name', 'CIFAR10')
-            organized_file_path = f"generated_labels/{dataset_type.lower()}/{self.cll_type}.txt"
-            os.makedirs(f"generated_labels/{dataset_type.lower()}", exist_ok=True)
-            with open(organized_file_path, 'w') as f:
-                for label in self.targets:
-                    if isinstance(label, np.ndarray):
-                        f.write(f"array([{label[0]}])\n")
-                    else:
-                        f.write(f"array([{label}])\n")
-            print(f"Saved {len(self.targets)} {self.cll_type} complementary labels to {organized_file_path}")
+            # # Save generated labels to file
+            # dataset_type = getattr(self, 'dataset_name', 'CIFAR10')
+            # organized_file_path = f"generated_labels/{dataset_type.lower()}/{self.cll_type}.txt"
+            # os.makedirs(f"generated_labels/{dataset_type.lower()}", exist_ok=True)
+            # with open(organized_file_path, 'w') as f:
+            #     for label in self.targets:
+            #         if isinstance(label, np.ndarray):
+            #             f.write(f"array([{label[0]}])\n")
+            #         else:
+            #             f.write(f"array([{label}])\n")
+            # print(f"Saved {len(self.targets)} {self.cll_type} complementary labels to {organized_file_path}")
 
         elif self.cll_type in ['least', 'most', 'most_no_noise',
                                 'from_matrix_least', 'from_matrix_most', 

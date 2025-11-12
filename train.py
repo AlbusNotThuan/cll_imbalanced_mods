@@ -923,7 +923,11 @@ if __name__ == "__main__":
         'custom_random',
         'clip_llava_most',
         'clip_llava_least',
-        'ord_500_random'
+        'ord_500_random',
+        'clip_llava_top_most',
+        'clip_llava_top_least',
+        'clip_llava_bottom_most',
+        'clip_llava_bottom_least'
     ]
     encoder_choices = [
         'simsiam',
@@ -967,7 +971,7 @@ if __name__ == "__main__":
     parser.add_argument('--transition_matrix', type=str, default=None, help='Path to transition matrix file (.npy or .txt). If not provided, will auto-load from transition_matrix/')
     parser.add_argument('--new_data_aug', type=str, choices=new_data_aug, help='choose new data aug method', default='none')
     parser.add_argument('--aug_type', type=str, choices=aug_type, help='augmentation type', default='flipflop')
-    parser.add_argument('--cll_type', type=str, choices=cll_type, help='complementary label type', default='random')
+    parser.add_argument('--cll_type', type=str, help='complementary label type', default='random')
     parser.add_argument('--gpu', type=int, choices=[0, 1, 2, 3, 4], help='GPU to use for training', default=1)
     parser.add_argument('--noise', type=bool, default=False, help='Whether to use noise in the training dataset')
     parser.add_argument('--ord_num', type=int, default=0, help='Number of ordinary samples per class for comb-oc')

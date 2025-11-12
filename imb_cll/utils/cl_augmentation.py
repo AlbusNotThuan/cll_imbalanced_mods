@@ -122,8 +122,14 @@ def intra_class_count_error(x, y, ytrue, k_cluster_label, device, dataset_name, 
     mixed_x = torch.zeros_like(x).to(device)
     y_a, y_b = torch.zeros_like(y).to(device), torch.zeros_like(y).to(device)  #to(device)
 
+    # # Precompute random indices that satisfy the condition
+    # matching_indices = (torch.tensor(k_cluster_label)[:, None] == torch.tensor(k_cluster_label)).clone().detach()
+
+    # Convert once to tensor (avoid torch.tensor(tensor) warning/copies)
+    k_cluster_tensor = torch.as_tensor(k_cluster_label, dtype=torch.long, device='cpu')
     # Precompute random indices that satisfy the condition
-    matching_indices = (torch.tensor(k_cluster_label)[:, None] == torch.tensor(k_cluster_label)).clone().detach()
+    matching_indices = (k_cluster_tensor[:, None] == k_cluster_tensor)
+
     for i in range(batch_size):
         matching_indices_i = torch.nonzero(matching_indices[i]).squeeze()
         if matching_indices_i.numel() >= 1:
@@ -153,8 +159,12 @@ def aug_intra_class(x, y, ytrue, k_cluster_label, device, dataset_name, alpha):
     batch_size = x.size()[0]
     mixed_x = torch.zeros_like(x).to(device)
     
-    # Precompute random indices that satisfy the condition
-    matching_indices = (torch.tensor(k_cluster_label[:, None]) == torch.tensor(k_cluster_label)).clone().detach()
+    # # Precompute random indices that satisfy the condition
+    # matching_indices = (torch.tensor(k_cluster_label[:, None]) == torch.tensor(k_cluster_label)).clone().detach()
+
+    k_cluster_tensor = torch.as_tensor(k_cluster_label, dtype=torch.long, device='cpu')
+    matching_indices = (k_cluster_tensor[:, None] == k_cluster_tensor)
+    
     if dataset_name in ("CIFAR20", "PCLCIFAR20"):
         label_y = torch.zeros(512, 20).to(device)
     else:
