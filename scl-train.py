@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from imb_cll.dataset.dataset import prepare_cluster_dataset, prepare_neighbour_dataset
 from imb_cll.utils.utils import AverageMeter, compute_metrics_and_record, weighting_calculation, num_img_per_class, adjust_learning_rate
 from imb_cll.utils.metrics import accuracy
-from imb_cll.utils.cl_augmentation import mixup_cl_data, mixup_data, aug_intra_class, mamix_intra_aug, aug_intra_class_three_images, aug_intra_class_four_images
+from imb_cll.utils.cl_augmentation import mixup_criterion, mixup_cl_data, mixup_data, aug_intra_class, mamix_intra_aug, aug_intra_class_three_images, aug_intra_class_four_images
 from imb_cll.models.models import get_modified_resnet18, get_resnet18
 from imb_cll.models.basemodels import Linear, MLP
 
@@ -141,8 +141,10 @@ def train(args):
     trainloader = DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     testloader = DataLoader(testset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
+    import pdb
+    pdb.set_trace()
     if args.model == "resnet18":
-        model = get_resnet18(num_classes).to(device)
+        model = get_resnet18(num_classes, input_dataset).to(device)
     elif args.model == "m-resnet18":
         model = get_modified_resnet18(num_classes).to(device)
     elif args.model == "mlp":
@@ -203,7 +205,8 @@ def train(args):
                             cls_num_list = num_img_per_class(img_max, num_classes, imb_type, imb_factor)
                         _input_mix, target_a, target_b, _, lam = mamix_intra_aug(inputs, labels, k_mean_targets, mamix_ratio, cls_num_list, device)
                     else:
-                        _input_mix, target_a, target_b, lam = mixup_data(inputs, labels)
+                        # _input_mix, target_a, target_b, lam = mixup_data(inputs, labels)
+                        _input_mix, target_a, target_b, lam = mixup_data(inputs, true_labels) # Training with true labels for mixup
 
                     output_mix = model(_input_mix)
 
@@ -240,6 +243,11 @@ def train(args):
                             target_a = target_a.squeeze()
                             target_b = target_b.squeeze()
                             loss = (lam * F.nll_loss(p, target_a, weights) + (1 - lam) * F.nll_loss(p, target_b, weights)).mean()
+                    elif algo == "ce":
+                        # For Loss, we use mixup output
+                        criterion = nn.CrossEntropyLoss(reduction='none').cuda(device)
+                        loss = mixup_criterion(criterion, output_mix, target_a,target_b, lam).mean()
+
                     else:
                         raise NotImplementedError
                     
@@ -407,7 +415,10 @@ def train(args):
                             target_a = target_a.squeeze()
                             target_b = target_b.squeeze()
                             loss = (lam * F.nll_loss(p, target_a) + (1 - lam) * F.nll_loss(p, target_b)).mean()
-
+                    elif algo == "ce":
+                        # For Loss, we use mixup output
+                        criterion = nn.CrossEntropyLoss(reduction='none').cuda(device)
+                        loss = mixup_criterion(criterion, output_mix, target_a,target_b, lam).mean()
                     else:
                         raise NotImplementedError
                 else:
@@ -516,7 +527,8 @@ if __name__ == "__main__":
 
     algo_list = [
         "scl-exp",
-        "scl-nl"
+        "scl-nl",
+        "ce"
     ]
 
     model_list = [

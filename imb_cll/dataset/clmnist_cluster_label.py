@@ -104,7 +104,15 @@ class CLMNIST(VisionDataset, BaseDataset):
         seed=1126,
         input_dataset=None,
         transition_bias=1.0,
-        setup_type=None
+        setup_type=None,
+        aug_type=None,
+        cll_type='random',
+        noise=False,
+        transition_matrix=None,
+        pretrained_mode=0,
+        ba_config=None,
+        mi_config=None,
+        ord_num=None
     ):
         self.root = root
         self.data_type = data_type
@@ -117,6 +125,16 @@ class CLMNIST(VisionDataset, BaseDataset):
         self.kmean_cluster = kmean_cluster # Number of clustering with K mean method.
         self.transition_bias = transition_bias
         self.setup_type = setup_type
+        self.cll_type = cll_type
+        self.noise = noise
+        self.transition_matrix = transition_matrix
+        self.dataset_name = "MNIST"  # Add dataset name attribute
+        self.pretrained_mode = pretrained_mode
+        self.ord_num = ord_num
+        
+        # Store BA and MI configurations
+        self.ba_config = ba_config
+        self.mi_config = mi_config
         # self.mean, self.std = 0.1307, 0.3081
         
         super(CLMNIST, self).__init__(
@@ -166,10 +184,27 @@ class CLMNIST(VisionDataset, BaseDataset):
                 self.data = self.data[:train_len]
                 self.targets = self.targets[:train_len]
 
+            # Only generate ordinary/CLL split if ord_num is specified (for comb-oc)
+            if self.ord_num is not None and self.ord_num > 0:
+                self.gen_few_ordinary_target()
+                print(f"Number of ordinary samples per class: {self.ord_num}")
+
             if self.setup_type == "setup 1":
                 self.gen_complementary_target()
             elif self.setup_type == "setup 2":
                 self.gen_bias_complementary_label()
+            elif self.setup_type == "transition_matrix" or self.setup_type == "Dbar[prompt]_T" or self.setup_type == "Dbar[prompt]_T[prompt]":
+                print("Using Dbar[prompt]")
+                # if self.transition_matrix is None:
+                #     raise ValueError("transition_matrix must be provided for setup_type 'transition_matrix'")
+                self.generate_cl_from_matrix(
+                    self.transition_matrix,
+                    ba_config=self.ba_config,
+                    mi_config=self.mi_config
+                )
+            elif self.setup_type == "Dbar_T[prompt]" or self.setup_type == "Dbar_T":
+                print("Using Dbar")
+                self.gen_complementary_target()
 
         self.idx_train = len(self.data)
         if self.data_type == 'train' and not validate:
@@ -236,6 +271,13 @@ class CLMNIST(VisionDataset, BaseDataset):
             else:
                 img, targets, true_targets, k_mean_target = self.data[index], self.targets[index], self.true_targets[index], self.k_mean_targets[index]
                 img = Image.fromarray(img.numpy(), mode='L')
+            
+            # Get label type: 1 = ordinary, 0 = complementary
+            if hasattr(self, 'label_type'):
+                label_type = self.label_type[index]
+            else:
+                label_type = 0  # Default: all complementary
+        
         if self.data_type == 'test':
             img, targets = self.data[index], int(self.targets[index])
             img = Image.fromarray(img.numpy(), mode='L')
@@ -250,7 +292,7 @@ class CLMNIST(VisionDataset, BaseDataset):
             targets = self.target_transform(targets)
 
         if self.data_type == 'train':
-            return img, targets, true_targets, k_mean_target, self.img_max
+            return img, targets, true_targets, k_mean_target, self.img_max, label_type
         else:
             return img, targets
 
@@ -327,7 +369,11 @@ class CLMNIST(VisionDataset, BaseDataset):
             print(self.pretrain)
 
             checkpoint = torch.load(self.pretrain, map_location="cpu")
-            state_dict = checkpoint['state_dict']
+            # Handle both .pth.tar and .ckpt formats
+            if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
+                state_dict = checkpoint['state_dict']
+            else:
+                state_dict = checkpoint
             for k in list(state_dict.keys()):
                 # retain only encoder up to before the embedding layer
                 if k.startswith('module.encoder') and not k.startswith('module.encoder.fc'):

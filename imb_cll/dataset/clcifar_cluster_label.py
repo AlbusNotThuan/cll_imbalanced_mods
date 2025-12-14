@@ -441,7 +441,7 @@ class CLCIFAR10(VisionDataset, BaseDataset):
     @torch.no_grad()
     def features_space(self):
         if self.data_type == "train":
-            model_simsiam =                                                       ()
+            model_simsiam = resnet18()
             if self.input_dataset in ('MNIST', 'FashionMNIST', 'KMNIST'):
                 num_channel = 1
             else:
@@ -459,7 +459,7 @@ class CLCIFAR10(VisionDataset, BaseDataset):
             dl = torch.utils.data.DataLoader(ds, batch_size=1024, shuffle=False)
             print(self.pretrain)
 
-            checkpoint = torch.load(self.pretrain, map_location="cpu")
+            checkpoint = torch.load(self.pretrain, map_location="cuda", weights_only=False)
             # Handle both .pth.tar and .ckpt formats
             if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
                 state_dict = checkpoint['state_dict']

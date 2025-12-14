@@ -346,8 +346,12 @@ def train_icm(args):
             if mixup:
                 if new_data_aug == "icm":
                     #----MIXUP INTRA CLASS----
-                    _input_mix, targets = aug_intra_class(inputs, labels, true_labels, k_mean_targets, device, dataset_name, alpha) # Mixup Intra Class
-                    targets = targets.to(device)
+                    # _input_mix, targets = aug_intra_class(inputs, labels, true_labels, k_mean_targets, device, dataset_name, alpha) # Mixup Intra Class
+                    # targets = targets.to(device)
+
+                    #----MIXUP INTRA CLASS COUNT ERROR----
+                    _input_mix, target_a, target_b, lam, count_error = intra_class_count_error(inputs, labels, true_labels, k_mean_targets, device, dataset_name)
+                    total_count_error += count_error
                     #----MIXUP FILTER INTRA CLASS----
                     # _input_mix, targets = aug_intra_class(inputs, labels, k_mean_targets, true_labels, device, dataset_name, alpha) #Mixup Filter Intra Class
                     # targets = targets.to(device)
@@ -369,13 +373,13 @@ def train_icm(args):
                     #----MIXUP ORIGINAL
                     # _input_mix, target_a, target_b, lam = mixup_data(inputs, labels)
                     #----MIXUP ORIGINAL COUNT ERROR----
-                    _input_mix, target_a, target_b, lam, count_error = mixup_cl_data_count_error(inputs, labels, true_labels, device)
-                    target_a, target_b = target_a.type(torch.LongTensor),  target_b.type(torch.LongTensor)  # casting to long
-                    target_a, target_b = target_a.to(device), target_b.to(device)
-                    total_count_error += count_error
-                    #----MIXUP INTRA CLASS COUNT ERROR----
-                    # _input_mix, target_a, target_b, lam, count_error = intra_class_count_error(inputs, labels, true_labels, k_mean_targets, device, dataset_name)
+                    # _input_mix, target_a, target_b, lam, count_error = mixup_cl_data_count_error(inputs, labels, true_labels, device)
+                    # target_a, target_b = target_a.type(torch.LongTensor),  target_b.type(torch.LongTensor)  # casting to long
+                    # target_a, target_b = target_a.to(device), target_b.to(device)
                     # total_count_error += count_error
+                    #----MIXUP INTRA CLASS COUNT ERROR----
+                    _input_mix, target_a, target_b, lam, count_error = intra_class_count_error(inputs, labels, true_labels, k_mean_targets, device, dataset_name)
+                    total_count_error += count_error
 
                 # Move only the inner tensors to the specified device
                 output_mix = model(_input_mix)
@@ -426,14 +430,18 @@ def train_icm(args):
                         loss = (lam * F.nll_loss(p, target_a, weights) + (1 - lam) * F.nll_loss(p, target_b, weights)).mean() #Soft-Label
                         # loss = (F.nll_loss(p, target_a, weights) + F.nll_loss(p, target_b, weights)).mean()  # Hard-label
                 elif algo[:3] == "fwd":
-                    if new_data_aug == "icm" or new_data_aug == "micm": #--For soft label----
-                        q = torch.mm(F.softmax(output_mix, dim=1), Q).clamp(1e-8,1-1e-8)
-                        loss = (-q.log() * targets).sum(-1).mean()
-                    else: #--For hard label----
-                        q = torch.mm(F.softmax(output_mix, dim=1), Q).clamp(1e-8,1-1e-8)
-                        target_a = target_a.squeeze()
-                        target_b = target_b.squeeze()
-                        loss = (lam * F.nll_loss(q.log(), target_a) + (1 -lam) * F.nll_loss(q.log(), target_a)).mean()
+                    # if new_data_aug == "icm" or new_data_aug == "micm": #--For soft label----
+                    #     q = torch.mm(F.softmax(output_mix, dim=1), Q).clamp(1e-8,1-1e-8)
+                    #     loss = (-q.log() * targets).sum(-1).mean()
+                    # else: #--For hard label----
+                    #     q = torch.mm(F.softmax(output_mix, dim=1), Q).clamp(1e-8,1-1e-8)
+                    #     target_a = target_a.squeeze()
+                    #     target_b = target_b.squeeze()
+                    #     loss = (lam * F.nll_loss(q.log(), target_a) + (1 -lam) * F.nll_loss(q.log(), target_a)).mean()
+                    q = torch.mm(F.softmax(output_mix, dim=1), Q).clamp(1e-8,1-1e-8)
+                    target_a = target_a.squeeze()
+                    target_b = target_b.squeeze()
+                    loss = (lam * F.nll_loss(q.log(), target_a) + (1 -lam) * F.nll_loss(q.log(), target_a)).mean()
                 elif algo == "lw":
                     if new_data_aug == "icm" or new_data_aug == "micm": #--For soft label----
                         p = 1-F.softmax(output_mix, dim=1)
@@ -654,7 +662,7 @@ def train_icm(args):
                                 top5,
                                 flag='Training')
         
-        # # Count the number of mixup noise error when mixing up
+        # Count the number of mixup noise error when mixing up
         # if icm or micm:
         #     mixup_noisy_error = round((total_count_error/len(trainset))*100, 2)
         #     print("The number of mixup noise in 1 epoch: {}%".format(mixup_noisy_error))
@@ -665,6 +673,11 @@ def train_icm(args):
         #     mixup_noisy_error = round((total_count_error/len(trainset))*100, 2)
         #     print("The number of mixup noise in 1 epoch: {}%".format(mixup_noisy_error))
 
+
+        mixup_noisy_error = round((total_count_error/len(trainset))*100, 2)
+        print("The number of mixup noise in 1 epoch: {}%".format(mixup_noisy_error))
+
+        
         # # Count the number of samples for each class
         # if mixup:
         #     cl_samples = np.concatenate(cl_samples, axis=0)
@@ -932,7 +945,13 @@ if __name__ == "__main__":
     encoder_choices = [
         'simsiam',
         'byol',
-        'mocov3'
+        'mocov3',
+        'simsiamv2',
+        'simclr',
+        'mocov3_mod',
+        'byol_mod',
+        'simsiamv2_mod',
+        'sava'
     ]
 
     parser = argparse.ArgumentParser()
@@ -947,8 +966,8 @@ if __name__ == "__main__":
     parser.add_argument('--evaluate_step', type=int, default=10)
     parser.add_argument("--hidden_dim", type=int, default=500)
     parser.add_argument('--k_cluster', type=int, default=0)
-    parser.add_argument('--n_epoch', type=int, default=300)
-    parser.add_argument('--warm_epoch', type=int, default=240)
+    parser.add_argument('--n_epoch', type=int, default=200)
+    parser.add_argument('--warm_epoch', type=int, default=160)
     parser.add_argument('--batch_size', type=int, default=512)
     parser.add_argument('--multi_label', action='store_true')
     parser.add_argument('--imb_type', type=str, default='exp')
@@ -976,7 +995,7 @@ if __name__ == "__main__":
     parser.add_argument('--noise', type=bool, default=False, help='Whether to use noise in the training dataset')
     parser.add_argument('--ord_num', type=int, default=0, help='Number of ordinary samples per class for comb-oc')
     parser.add_argument('--comp_loss_type', type=str, choices=['scl', 'fwd', 'cpe'], default='fwd', help='Complementary loss type for comb-oc algorithm')
-    parser.add_argument('--encoder_type', type=str, choices=encoder_choices, default='byol', help='Type of encoder for icm encoder network')
+    parser.add_argument('--encoder_type', type=str, choices=encoder_choices, default='simsiam', help='Type of encoder for icm encoder network')
 
     # Blahut-Arimoto augmentation parameters
     parser.add_argument('--use_blahut', type=str, default='false', help='Enable Blahut-Arimoto transition matrix augmentation')

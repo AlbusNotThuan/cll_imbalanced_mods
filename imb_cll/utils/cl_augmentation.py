@@ -1,3 +1,4 @@
+import pdb
 import torch
 import random
 import numpy as np
@@ -195,8 +196,8 @@ def aug_intra_class(x, y, ytrue, k_cluster_label, device, dataset_name, alpha):
 
             # Perform weighted calculations for mixed_x
             if dataset_name in ("CIFAR10", "PCLCIFAR10", "CIFAR20", "PCLCIFAR20", "MNIST", "FashionMNIST", "KMNIST"):
-                # mixed_x[i] = lam * x[indices[0]] + (1 - lam) * x[indices[1]]  # New Data 13/01/2024
-                mixed_x[i] = x[i]  #Soft-label and hard-label for ablation study 13/01/2024
+                mixed_x[i] = lam * x[indices[0]] + (1 - lam) * x[indices[1]]  # New Data 13/01/2024
+                # mixed_x[i] = x[i]  #Soft-label and hard-label for ablation study 13/01/2024
             else:
                 mixed_x[i] = x[i]
             
@@ -206,7 +207,11 @@ def aug_intra_class(x, y, ytrue, k_cluster_label, device, dataset_name, alpha):
 
             label_y[i] = recalculate_lambda_label_sharing(y_values, lam_values)
 
+            # import pdb
+            # pdb.set_trace()
+
             # Count the violent case when true label appearing in cl label
+
             # if (y[i] == ytrue[i] or y[i] == ytrue[j] or y[j] == ytrue[j] or y[j] == ytrue[i]):
             #     count_error += 1
 
