@@ -215,10 +215,36 @@ class CLTiny200(VisionDataset, BaseDataset):
                 print("Done: K_Mean Cluster")
 
     def _load_class_names(self):
-        """Load class name to ID mapping from wnids.txt"""
+        """Load class name to ID mapping from wnids.txt and words.txt"""
+        # Load WordNet IDs (class identifiers)
         wnids_path = os.path.join(self.root, self.base_folder, 'wnids.txt')
         with open(wnids_path, 'r') as f:
-            self.classes = [line.strip() for line in f.readlines()]
+            self.wnids = [line.strip() for line in f.readlines()]
+        
+        # Create mapping from WordNet ID to class index
+        self.wnid_to_idx = {wnid: idx for idx, wnid in enumerate(self.wnids)}
+        
+        # Load human-readable class names from words.txt
+        words_path = os.path.join(self.root, self.base_folder, 'words.txt')
+        self.wnid_to_words = {}
+        with open(words_path, 'r') as f:
+            for line in f.readlines():
+                parts = line.strip().split('\t')
+                if len(parts) >= 2:
+                    wnid = parts[0]
+                    words = parts[1]
+                    self.wnid_to_words[wnid] = words
+        
+        # Create class names list (in order of class index)
+        self.classes = []
+        for wnid in self.wnids:
+            if wnid in self.wnid_to_words:
+                # Take only the first word/phrase before comma for cleaner names
+                class_name = self.wnid_to_words[wnid].split(',')[0].strip()
+                self.classes.append(class_name)
+            else:
+                self.classes.append(wnid)  # Fallback to wnid if no word found
+        
         self.class_to_idx = {cls: idx for idx, cls in enumerate(self.classes)}
         self.idx_to_class = {idx: cls for cls, idx in self.class_to_idx.items()}
 
@@ -226,9 +252,9 @@ class CLTiny200(VisionDataset, BaseDataset):
         """Load training data from the train folder"""
         train_dir = os.path.join(self.root, self.base_folder, 'train')
         
-        for class_name in self.classes:
-            class_dir = os.path.join(train_dir, class_name, 'images')
-            class_idx = self.class_to_idx[class_name]
+        for wnid in self.wnids:
+            class_dir = os.path.join(train_dir, wnid, 'images')
+            class_idx = self.wnid_to_idx[wnid]
             
             if os.path.exists(class_dir):
                 for img_name in os.listdir(class_dir):
@@ -252,19 +278,19 @@ class CLTiny200(VisionDataset, BaseDataset):
             for line in f.readlines():
                 parts = line.strip().split('\t')
                 img_name = parts[0]
-                class_name = parts[1]
-                val_annotations[img_name] = class_name
+                wnid = parts[1]  # This is the WordNet ID
+                val_annotations[img_name] = wnid
         
         # Load validation images
         val_images_dir = os.path.join(val_dir, 'images')
-        for img_name, class_name in val_annotations.items():
-            if class_name in self.class_to_idx:
+        for img_name, wnid in val_annotations.items():
+            if wnid in self.wnid_to_idx:
                 img_path = os.path.join(val_images_dir, img_name)
                 if os.path.exists(img_path):
                     img = Image.open(img_path).convert('RGB')
                     img_array = np.array(img)
                     self.data.append(img_array)
-                    self.targets.append(self.class_to_idx[class_name])
+                    self.targets.append(self.wnid_to_idx[wnid])
         
         print(f"Loaded {len(self.data)} validation/test samples")
 
