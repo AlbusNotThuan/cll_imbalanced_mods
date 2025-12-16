@@ -89,17 +89,21 @@ def weighting_calculation(dataset_name, imb_factor, n_weight, encoder_type='sims
         if encoder_type == 'simsiam':
             if imb_factor == 0.01:
                 pretrain = "./imb_cll_pretrained/CIFAR10/CIFAR10_0.01_checkpoint_0799_-0.8539.pth.tar"
+<<<<<<< HEAD
                 # pretrain = "./imb_cll_pretrained/cifar10/cifar10_input32_checkpoint_0799_-0.8011.pth.tar"
+=======
+                # pretrain = "./imb_cll_pretrained/CIFAR10/cifar10_input32_checkpoint_0799_-0.8011.pth.tar"
+>>>>>>> 8d4b62626e313267807cbbdce3a9226630bf2055
                 weights = torch.tensor([1.44308171, 1.14900082, 1.02512971, 0.96447884, 0.93054867, 0.91227983, 0.90093544, 0.89476267, 0.89110236, 0.88867995])
                 # weights = torch.tensor([0.05061136, 0.07689979, 0.12113387, 0.19503667, 0.31880537, 0.52458985, 0.86834894, 1.44262727, 2.40922305, 3.99272382])
                 weights = weights ** n_weight
             elif imb_factor == 0.02:
-                pretrain = "./imb_cll_pretrained/cifar10/cifar10_0.02_checkpoint_0799_-0.8122.pth.tar"
+                pretrain = "./imb_cll_pretrained/CIFAR10/cifar10_0.02_checkpoint_0799_-0.8122.pth.tar"
                 weights = torch.tensor([1.44308171, 1.14900082, 1.02512971, 0.96447884, 0.93054867, 0.91227983, 0.90093544, 0.89476267, 0.89110236, 0.88867995])
                 # weights = torch.tensor([0.05061136, 0.07689979, 0.12113387, 0.19503667, 0.31880537, 0.52458985, 0.86834894, 1.44262727, 2.40922305, 3.99272382])
                 weights = weights ** n_weight
             elif imb_factor == 0.1:
-                pretrain = "./imb_cll_pretrained/cifar10/cifar10_0.1_checkpoint_0799_-0.8381.pth.tar"
+                pretrain = "./imb_cll_pretrained/CIFAR10/cifar10_0.1_checkpoint_0799_-0.8381.pth.tar"
                 weights = torch.tensor([1.44308171, 1.14900082, 1.02512971, 0.96447884, 0.93054867, 0.91227983, 0.90093544, 0.89476267, 0.89110236, 0.88867995])
                 # weights = torch.tensor([0.05061136, 0.07689979, 0.12113387, 0.19503667, 0.31880537, 0.52458985, 0.86834894, 1.44262727, 2.40922305, 3.99272382])
                 weights = weights ** n_weight
@@ -110,13 +114,43 @@ def weighting_calculation(dataset_name, imb_factor, n_weight, encoder_type='sims
 
         elif encoder_type == 'byol':
             if imb_factor == 1:
-                pretrain = "./balanced_cll_pretrained/cifar10/cifar10_byol_0799.ckpt"
+                pretrain = "./balanced_cll_pretrained/cifar10/byol-cifar10-0799.ckpt"
                 weights = torch.tensor([1.44308171, 1.14900082, 1.02512971, 0.96447884, 0.93054867, 0.91227983, 0.90093544, 0.89476267, 0.89110236, 0.88867995])
                 weights = weights ** n_weight
 
         elif encoder_type == 'mocov3':
             if imb_factor == 1:
-                pretrain = "./balanced_cll_pretrained/cifar10/cifar10_mocov3_0799.ckpt"
+                pretrain = "./balanced_cll_pretrained/cifar10/mocov3_cifar10-0799.ckpt"
+                weights = torch.tensor([1.44308171, 1.14900082, 1.02512971, 0.96447884, 0.93054867, 0.91227983, 0.90093544, 0.89476267, 0.89110236, 0.88867995])
+                weights = weights ** n_weight
+        elif encoder_type == 'simsiamv2':
+            if imb_factor == 1:
+                pretrain = "./balanced_cll_pretrained/cifar10/simsiam-cifar10-0799.ckpt"
+                weights = torch.tensor([1.44308171, 1.14900082, 1.02512971, 0.96447884, 0.93054867, 0.91227983, 0.90093544, 0.89476267, 0.89110236, 0.88867995])
+                weights = weights ** n_weight
+        elif encoder_type == 'simclr':
+            if imb_factor == 1:
+                pretrain = "./balanced_cll_pretrained/cifar10/simclr-cifar10-0799.ckpt"
+                weights = torch.tensor([1.44308171, 1.14900082, 1.02512971, 0.96447884, 0.93054867, 0.91227983, 0.90093544, 0.89476267, 0.89110236, 0.88867995])
+                weights = weights ** n_weight
+        elif encoder_type == 'mocov3_mod':
+            if imb_factor == 1:
+                pretrain = "./balanced_cll_pretrained/cifar10/checkpoint_0799.pth.tar"
+                weights = torch.tensor([1.44308171, 1.14900082, 1.02512971, 0.96447884, 0.93054867, 0.91227983, 0.90093544, 0.89476267, 0.89110236, 0.88867995])
+                weights = weights ** n_weight
+        elif encoder_type == 'byol_mod':
+            if imb_factor == 1:
+                pretrain = "./balanced_cll_pretrained/cifar10/byol-cifar10-y75jalwk-ep=799.ckpt"
+                weights = torch.tensor([1.44308171, 1.14900082, 1.02512971, 0.96447884, 0.93054867, 0.91227983, 0.90093544, 0.89476267, 0.89110236, 0.88867995])
+                weights = weights ** n_weight
+        elif encoder_type == 'simsiamv2_mod':
+            if imb_factor == 1:
+                pretrain = "./balanced_cll_pretrained/cifar10/simsiam-cifar10-hmfjy6zu-ep=799.ckpt"
+                weights = torch.tensor([1.44308171, 1.14900082, 1.02512971, 0.96447884, 0.93054867, 0.91227983, 0.90093544, 0.89476267, 0.89110236, 0.88867995])
+                weights = weights ** n_weight
+        elif encoder_type == 'sava':
+            if imb_factor == 1:
+                pretrain = "./balanced_cll_pretrained/cifar10/cifar10_embedder_preact_resnet18.pth"
                 weights = torch.tensor([1.44308171, 1.14900082, 1.02512971, 0.96447884, 0.93054867, 0.91227983, 0.90093544, 0.89476267, 0.89110236, 0.88867995])
                 weights = weights ** n_weight
     elif dataset_name == "PCLCIFAR10":
@@ -253,6 +287,17 @@ def weighting_calculation(dataset_name, imb_factor, n_weight, encoder_type='sims
                 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
                 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
             ])
+            weights = weights ** n_weight
+    elif dataset_name == "Tiny200":
+        # TinyImageNet-200 has 200 classes
+        # Default to balanced weights (equal weighting for all classes)
+        if imb_factor == 1:
+            pretrain = None  # No pretrained encoder available yet for Tiny200
+            weights = torch.ones(200)
+            weights = weights ** n_weight
+        elif imb_factor in [0.01, 0.02, 0.1]:
+            pretrain = None  # No pretrained encoder available yet for imbalanced Tiny200
+            weights = torch.ones(200)
             weights = weights ** n_weight
     else:
         raise NotImplementedError

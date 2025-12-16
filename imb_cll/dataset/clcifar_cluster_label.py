@@ -459,7 +459,7 @@ class CLCIFAR10(VisionDataset, BaseDataset):
             dl = torch.utils.data.DataLoader(ds, batch_size=1024, shuffle=False)
             print(self.pretrain)
 
-            checkpoint = torch.load(self.pretrain, map_location="cpu")
+            checkpoint = torch.load(self.pretrain, map_location="cuda", weights_only=False)
             # Handle both .pth.tar and .ckpt formats
             if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
                 state_dict = checkpoint['state_dict']

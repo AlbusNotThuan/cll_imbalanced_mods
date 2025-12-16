@@ -6,5 +6,6 @@ wandb/*
 *.png
 *.ckpt
 balanced_cll_pretrained/
+*.tar.gz
 all_pretrained.tar.gz
 wandb*/

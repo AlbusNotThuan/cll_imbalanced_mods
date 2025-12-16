@@ -421,7 +421,7 @@ class PCLCIFAR20(Dataset, BaseDataset):
             targets = self.target_transform(targets)
 
         if self.data_type == "train":
-            return img, targets, true_targets, k_mean_targets, self.img_max
+            return img, targets, true_targets, k_mean_targets, self.img_max, int(0)
             # return img, targets, true_targets, k_mean_targets
         else:
             return img, targets

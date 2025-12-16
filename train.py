@@ -346,8 +346,12 @@ def train_icm(args):
             if mixup:
                 if new_data_aug == "icm":
                     #----MIXUP INTRA CLASS----
-                    _input_mix, targets = aug_intra_class(inputs, labels, true_labels, k_mean_targets, device, dataset_name, alpha) # Mixup Intra Class
-                    targets = targets.to(device)
+                    # _input_mix, targets = aug_intra_class(inputs, labels, true_labels, k_mean_targets, device, dataset_name, alpha) # Mixup Intra Class
+                    # targets = targets.to(device)
+
+                    #----MIXUP INTRA CLASS COUNT ERROR----
+                    _input_mix, target_a, target_b, lam, count_error = intra_class_count_error(inputs, labels, true_labels, k_mean_targets, device, dataset_name)
+                    total_count_error += count_error
                     #----MIXUP FILTER INTRA CLASS----
                     # _input_mix, targets = aug_intra_class(inputs, labels, k_mean_targets, true_labels, device, dataset_name, alpha) #Mixup Filter Intra Class
                     # targets = targets.to(device)
@@ -368,6 +372,7 @@ def train_icm(args):
                     _input_mix, target_a, target_b, _, lam = mamix_intra_aug(inputs, labels, k_mean_targets, mamix_ratio, cls_num_list, device)
                 else:  # Original Mixup without clustering and filtering
                     #----MIXUP ORIGINAL
+<<<<<<< HEAD
                     _input_mix, target_a, target_b, lam = mixup_data(inputs, labels)
                     # #----MIXUP ORIGINAL COUNT ERROR----
                     # _input_mix, target_a, target_b, lam, count_error = mixup_cl_data_count_error(inputs, labels, true_labels, device)
@@ -379,6 +384,17 @@ def train_icm(args):
                     # total_count_error += count_error
                     # Fix: pass ytrue, device, and alpha when doing default mixup
                     # _input_mix, target_a, target_b, lam = mixup_cl_data(inputs, labels, true_labels, device, alpha)
+=======
+                    # _input_mix, target_a, target_b, lam = mixup_data(inputs, labels)
+                    #----MIXUP ORIGINAL COUNT ERROR----
+                    # _input_mix, target_a, target_b, lam, count_error = mixup_cl_data_count_error(inputs, labels, true_labels, device)
+                    # target_a, target_b = target_a.type(torch.LongTensor),  target_b.type(torch.LongTensor)  # casting to long
+                    # target_a, target_b = target_a.to(device), target_b.to(device)
+                    # total_count_error += count_error
+                    #----MIXUP INTRA CLASS COUNT ERROR----
+                    _input_mix, target_a, target_b, lam, count_error = intra_class_count_error(inputs, labels, true_labels, k_mean_targets, device, dataset_name)
+                    total_count_error += count_error
+>>>>>>> 8d4b62626e313267807cbbdce3a9226630bf2055
 
                 # Move only the inner tensors to the specified device
                 output_mix = model(_input_mix)
@@ -429,14 +445,18 @@ def train_icm(args):
                         loss = (lam * F.nll_loss(p, target_a, weights) + (1 - lam) * F.nll_loss(p, target_b, weights)).mean() #Soft-Label
                         # loss = (F.nll_loss(p, target_a, weights) + F.nll_loss(p, target_b, weights)).mean()  # Hard-label
                 elif algo[:3] == "fwd":
-                    if new_data_aug == "icm" or new_data_aug == "micm": #--For soft label----
-                        q = torch.mm(F.softmax(output_mix, dim=1), Q).clamp(1e-8,1-1e-8)
-                        loss = (-q.log() * targets).sum(-1).mean()
-                    else: #--For hard label----
-                        q = torch.mm(F.softmax(output_mix, dim=1), Q).clamp(1e-8,1-1e-8)
-                        target_a = target_a.squeeze()
-                        target_b = target_b.squeeze()
-                        loss = (lam * F.nll_loss(q.log(), target_a) + (1 -lam) * F.nll_loss(q.log(), target_a)).mean()
+                    # if new_data_aug == "icm" or new_data_aug == "micm": #--For soft label----
+                    #     q = torch.mm(F.softmax(output_mix, dim=1), Q).clamp(1e-8,1-1e-8)
+                    #     loss = (-q.log() * targets).sum(-1).mean()
+                    # else: #--For hard label----
+                    #     q = torch.mm(F.softmax(output_mix, dim=1), Q).clamp(1e-8,1-1e-8)
+                    #     target_a = target_a.squeeze()
+                    #     target_b = target_b.squeeze()
+                    #     loss = (lam * F.nll_loss(q.log(), target_a) + (1 -lam) * F.nll_loss(q.log(), target_a)).mean()
+                    q = torch.mm(F.softmax(output_mix, dim=1), Q).clamp(1e-8,1-1e-8)
+                    target_a = target_a.squeeze()
+                    target_b = target_b.squeeze()
+                    loss = (lam * F.nll_loss(q.log(), target_a) + (1 -lam) * F.nll_loss(q.log(), target_a)).mean()
                 elif algo == "lw":
                     if new_data_aug == "icm" or new_data_aug == "micm": #--For soft label----
                         p = 1-F.softmax(output_mix, dim=1)
@@ -657,7 +677,7 @@ def train_icm(args):
                                 top5,
                                 flag='Training')
         
-        # # Count the number of mixup noise error when mixing up
+        # Count the number of mixup noise error when mixing up
         # if icm or micm:
         #     mixup_noisy_error = round((total_count_error/len(trainset))*100, 2)
         #     print("The number of mixup noise in 1 epoch: {}%".format(mixup_noisy_error))
@@ -668,6 +688,11 @@ def train_icm(args):
         #     mixup_noisy_error = round((total_count_error/len(trainset))*100, 2)
         #     print("The number of mixup noise in 1 epoch: {}%".format(mixup_noisy_error))
 
+
+        mixup_noisy_error = round((total_count_error/len(trainset))*100, 2)
+        print("The number of mixup noise in 1 epoch: {}%".format(mixup_noisy_error))
+
+        
         # # Count the number of samples for each class
         # if mixup:
         #     cl_samples = np.concatenate(cl_samples, axis=0)
@@ -846,7 +871,8 @@ if __name__ == "__main__":
         "PCLCIFAR20",
         "KMNIST",
         "MNIST",
-        "FashionMNIST"
+        "FashionMNIST",
+        "Tiny200"
     ]
 
     algo_list = [
@@ -935,7 +961,13 @@ if __name__ == "__main__":
     encoder_choices = [
         'simsiam',
         'byol',
-        'mocov3'
+        'mocov3',
+        'simsiamv2',
+        'simclr',
+        'mocov3_mod',
+        'byol_mod',
+        'simsiamv2_mod',
+        'sava'
     ]
 
     parser = argparse.ArgumentParser()
