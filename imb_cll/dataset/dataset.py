@@ -4,6 +4,7 @@ from .clmnist_cluster_label import CLMNIST, CLFashionMNIST, CLKMNIST
 from .clcifar_nn_label import NCLCIFAR10, NCLCIFAR20, NCLCIFAR100
 from .clmnist_nn_label import NCLMNIST
 from .pclcifar_cluster_label import PCLCIFAR10, PCLCIFAR20
+from .cltiny_cluster_label import CLTiny200
 # from torch.utils.data import DataLoader, Dataset
 
 def prepare_dataset(dataset, data_type, max_train_samples=None, multi_label=False, augment=False, imb_type=None, imb_factor=1.0):
@@ -312,6 +313,34 @@ def prepare_cluster_dataset(input_dataset, data_type=None, kmean_cluster=None, m
             )
         else:
             dataset = CLKMNIST(root="./data/KMNIST", train=False, data_type=data_type, input_dataset=input_dataset)
+    elif input_dataset == "Tiny200":
+        if data_type == "train":
+            dataset = CLTiny200(
+                root="./data/tiny200",
+                train=True,
+                data_type=data_type,
+                download=True,
+                kmean_cluster=kmean_cluster,
+                max_train_samples=max_train_samples,
+                multi_label=multi_label,
+                augment=augment,
+                imb_type=imb_type,
+                imb_factor=imb_factor,
+                pretrain=pretrain,
+                input_dataset=input_dataset,
+                transition_bias=transition_bias,
+                setup_type=setup_type,
+                aug_type=aug_type,
+                cll_type=cll_type,
+                noise=noise,
+                transition_matrix=transition_matrix,
+                pretrained_mode=pretrained_mode,
+                ba_config=ba_config,
+                mi_config=mi_config,
+                ord_num=ord_num
+            )
+        else:
+            dataset = CLTiny200(root="./data/tiny200", train=False, data_type=data_type, input_dataset=input_dataset)
     else:
         raise NotImplementedError
     

@@ -284,6 +284,17 @@ def weighting_calculation(dataset_name, imb_factor, n_weight, encoder_type='sims
                 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
             ])
             weights = weights ** n_weight
+    elif dataset_name == "Tiny200":
+        # TinyImageNet-200 has 200 classes
+        # Default to balanced weights (equal weighting for all classes)
+        if imb_factor == 1:
+            pretrain = None  # No pretrained encoder available yet for Tiny200
+            weights = torch.ones(200)
+            weights = weights ** n_weight
+        elif imb_factor in [0.01, 0.02, 0.1]:
+            pretrain = None  # No pretrained encoder available yet for imbalanced Tiny200
+            weights = torch.ones(200)
+            weights = weights ** n_weight
     else:
         raise NotImplementedError
 

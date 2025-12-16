@@ -856,7 +856,8 @@ if __name__ == "__main__":
         "PCLCIFAR20",
         "KMNIST",
         "MNIST",
-        "FashionMNIST"
+        "FashionMNIST",
+        "Tiny200"
     ]
 
     algo_list = [
