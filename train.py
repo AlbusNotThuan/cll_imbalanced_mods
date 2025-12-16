@@ -355,7 +355,8 @@ def train_icm(args):
                     _input_mix, targets = aug_intra_class_three_images(inputs, labels, true_labels, k_mean_targets, device, dataset_name, alpha)
                     targets = targets.to(device)
                 elif new_data_aug == "four_images_intra_class":
-                    _input_mix, target_a, target_b, target_c, target_d, lam1, lam2, lam3, lam4, count_error = aug_intra_class_four_images(inputs, labels, true_labels, k_mean_targets, device, dataset_name)
+                    # pass alpha to four-image intra class augmentation
+                    _input_mix, target_a, target_b, target_c, target_d, lam1, lam2, lam3, lam4, count_error = aug_intra_class_four_images(inputs, labels, true_labels, k_mean_targets, device, dataset_name, alpha)
                     total_count_error += count_error
                 elif new_data_aug == "cl_aug":  # Mixup filter by true label --> Proof of Concept
                     #----MIXUP FILTER EXTRA CLASS----
@@ -367,15 +368,17 @@ def train_icm(args):
                     _input_mix, target_a, target_b, _, lam = mamix_intra_aug(inputs, labels, k_mean_targets, mamix_ratio, cls_num_list, device)
                 else:  # Original Mixup without clustering and filtering
                     #----MIXUP ORIGINAL
-                    # _input_mix, target_a, target_b, lam = mixup_data(inputs, labels)
-                    #----MIXUP ORIGINAL COUNT ERROR----
-                    _input_mix, target_a, target_b, lam, count_error = mixup_cl_data_count_error(inputs, labels, true_labels, device)
-                    target_a, target_b = target_a.type(torch.LongTensor),  target_b.type(torch.LongTensor)  # casting to long
-                    target_a, target_b = target_a.to(device), target_b.to(device)
-                    total_count_error += count_error
+                    _input_mix, target_a, target_b, lam = mixup_data(inputs, labels)
+                    # #----MIXUP ORIGINAL COUNT ERROR----
+                    # _input_mix, target_a, target_b, lam, count_error = mixup_cl_data_count_error(inputs, labels, true_labels, device)
+                    # target_a, target_b = target_a.type(torch.LongTensor),  target_b.type(torch.LongTensor)  # casting to long
+                    # target_a, target_b = target_a.to(device), target_b.to(device)
+                    # total_count_error += count_error
                     #----MIXUP INTRA CLASS COUNT ERROR----
                     # _input_mix, target_a, target_b, lam, count_error = intra_class_count_error(inputs, labels, true_labels, k_mean_targets, device, dataset_name)
                     # total_count_error += count_error
+                    # Fix: pass ytrue, device, and alpha when doing default mixup
+                    # _input_mix, target_a, target_b, lam = mixup_cl_data(inputs, labels, true_labels, device, alpha)
 
                 # Move only the inner tensors to the specified device
                 output_mix = model(_input_mix)
@@ -939,16 +942,16 @@ if __name__ == "__main__":
     parser.add_argument('--algo', type=str, choices=algo_list, help='Algorithm')
     parser.add_argument('--dataset_name', type=str, choices=dataset_list, help='Dataset name', default='cifar10')
     parser.add_argument('--model', type=str, choices=model_list, help='Model name', default='resnet18')
-    parser.add_argument('--lr', type=float, help='Learning rate', default=1e-3)
-    parser.add_argument('--weight_decay', type=float, default=1e-5)
+    parser.add_argument('--lr', type=float, help='Learning rate', default=1e-4)
+    parser.add_argument('--weight_decay', type=float, default=1e-4)
     parser.add_argument('--seed', type=int, help='Random seed', default=1126)
-    parser.add_argument('--data_aug', type=str, default='true')
+    parser.add_argument('--data_aug', type=str, default='false')
     parser.add_argument('--max_train_samples', type=int, default=None)
     parser.add_argument('--evaluate_step', type=int, default=10)
     parser.add_argument("--hidden_dim", type=int, default=500)
     parser.add_argument('--k_cluster', type=int, default=0)
-    parser.add_argument('--n_epoch', type=int, default=300)
-    parser.add_argument('--warm_epoch', type=int, default=240)
+    parser.add_argument('--n_epoch', type=int, default=200)
+    parser.add_argument('--warm_epoch', type=int, default=160)
     parser.add_argument('--batch_size', type=int, default=512)
     parser.add_argument('--multi_label', action='store_true')
     parser.add_argument('--imb_type', type=str, default='exp')
@@ -965,18 +968,18 @@ if __name__ == "__main__":
     parser.add_argument('--mamix_ratio', type=float, default=-0.25)
     parser.add_argument('--neighbor', type=str, default='false')
     parser.add_argument('--weight', type=str, choices=weight_list, help='rank or distance')
-    parser.add_argument('--alpha', type=float, default=1.0)
+    parser.add_argument('--alpha', type=float, default=1.0, help='Alpha parameter for Beta/Dirichlet mixup distributions (sampling lam). Typical values: 0.2, 0.4, 1.0')
     parser.add_argument('--transition_bias', type=float, default=1.0)
     parser.add_argument('--setup_type', type=str, choices=setup_list, help='problem setup', default='setup 1')
     parser.add_argument('--transition_matrix', type=str, default=None, help='Path to transition matrix file (.npy or .txt). If not provided, will auto-load from transition_matrix/')
     parser.add_argument('--new_data_aug', type=str, choices=new_data_aug, help='choose new data aug method', default='none')
     parser.add_argument('--aug_type', type=str, choices=aug_type, help='augmentation type', default='flipflop')
     parser.add_argument('--cll_type', type=str, help='complementary label type', default='random')
-    parser.add_argument('--gpu', type=int, choices=[0, 1, 2, 3, 4], help='GPU to use for training', default=1)
+    parser.add_argument('--gpu', type=int, help='GPU to use for training', default=1)
     parser.add_argument('--noise', type=bool, default=False, help='Whether to use noise in the training dataset')
     parser.add_argument('--ord_num', type=int, default=0, help='Number of ordinary samples per class for comb-oc')
     parser.add_argument('--comp_loss_type', type=str, choices=['scl', 'fwd', 'cpe'], default='fwd', help='Complementary loss type for comb-oc algorithm')
-    parser.add_argument('--encoder_type', type=str, choices=encoder_choices, default='byol', help='Type of encoder for icm encoder network')
+    parser.add_argument('--encoder_type', type=str, choices=encoder_choices, default='simsiam', help='Type of encoder for icm encoder network')
 
     # Blahut-Arimoto augmentation parameters
     parser.add_argument('--use_blahut', type=str, default='false', help='Enable Blahut-Arimoto transition matrix augmentation')

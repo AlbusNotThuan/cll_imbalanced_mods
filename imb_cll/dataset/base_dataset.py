@@ -330,7 +330,7 @@ class BaseDataset:
         new_targets = []
         targets_np = np.array(self.targets, dtype=np.int64)
         classes = np.unique(targets_np)
-        # np.random.shuffle(classes)
+        np.random.shuffle(classes)
         self.num_per_cls_dict = dict()
         for the_class, the_img_num in zip(classes, img_num_per_cls):
             self.num_per_cls_dict[the_class] = the_img_num

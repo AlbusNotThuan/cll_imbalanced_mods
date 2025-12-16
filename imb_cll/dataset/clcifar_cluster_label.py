@@ -441,7 +441,7 @@ class CLCIFAR10(VisionDataset, BaseDataset):
     @torch.no_grad()
     def features_space(self):
         if self.data_type == "train":
-            model_simsiam =                                                       ()
+            model_simsiam = resnet18()
             if self.input_dataset in ('MNIST', 'FashionMNIST', 'KMNIST'):
                 num_channel = 1
             else:
