@@ -42,6 +42,15 @@ class BaseDataset:
             #             f.write(f"array([{label}])\n")
             # print(f"Saved {len(self.targets)} {self.cll_type} complementary labels to {organized_file_path}")
 
+            # with open(f"generated_labels/{dataset_type.lower()}/true.txt", 'w') as f:
+            #     for label in self.true_targets:
+            #         if isinstance(label, np.ndarray):
+            #             f.write(f"array([{label[0]}])\n")
+            #         else:
+            #             f.write(f"array([{label}])\n")
+            # print(f"Saved {len(self.true_targets)} true labels to generated_labels/{dataset_type.lower()}/true.txt")
+
+
             # pdb.set_trace()
 
         elif self.cll_type in ['least', 'most', 'most_no_noise',

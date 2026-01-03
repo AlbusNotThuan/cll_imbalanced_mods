@@ -89,11 +89,7 @@ def weighting_calculation(dataset_name, imb_factor, n_weight, encoder_type='sims
         if encoder_type == 'simsiam':
             if imb_factor == 0.01:
                 pretrain = "./imb_cll_pretrained/CIFAR10/CIFAR10_0.01_checkpoint_0799_-0.8539.pth.tar"
-<<<<<<< HEAD
                 # pretrain = "./imb_cll_pretrained/cifar10/cifar10_input32_checkpoint_0799_-0.8011.pth.tar"
-=======
-                # pretrain = "./imb_cll_pretrained/CIFAR10/cifar10_input32_checkpoint_0799_-0.8011.pth.tar"
->>>>>>> 8d4b62626e313267807cbbdce3a9226630bf2055
                 weights = torch.tensor([1.44308171, 1.14900082, 1.02512971, 0.96447884, 0.93054867, 0.91227983, 0.90093544, 0.89476267, 0.89110236, 0.88867995])
                 # weights = torch.tensor([0.05061136, 0.07689979, 0.12113387, 0.19503667, 0.31880537, 0.52458985, 0.86834894, 1.44262727, 2.40922305, 3.99272382])
                 weights = weights ** n_weight

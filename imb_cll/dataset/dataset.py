@@ -151,7 +151,7 @@ def prepare_cluster_dataset(input_dataset, data_type=None, kmean_cluster=None, m
     elif input_dataset == "CIFAR20":
         if data_type == "train":
             dataset = CLCIFAR20(
-                root="./data/cifar20",
+                root="../data/cifar20",
                 train=True,
                 data_type=data_type,
                 download=True,
@@ -179,7 +179,7 @@ def prepare_cluster_dataset(input_dataset, data_type=None, kmean_cluster=None, m
     elif input_dataset == "CIFAR100":
         if data_type == "train":
             dataset = CLCIFAR100(
-                root="./data/cifar100",
+                root="../data/cifar100",
                 train=True,
                 data_type=data_type,
                 download=True,
@@ -255,7 +255,7 @@ def prepare_cluster_dataset(input_dataset, data_type=None, kmean_cluster=None, m
     elif input_dataset == "MNIST":
         if data_type == "train":
             dataset = CLMNIST(
-                root="./data/mnist",
+                root="../data/mnist",
                 train=True,
                 data_type=data_type,
                 download=True,
@@ -268,14 +268,15 @@ def prepare_cluster_dataset(input_dataset, data_type=None, kmean_cluster=None, m
                 pretrain=pretrain,
                 input_dataset=input_dataset,
                 transition_bias=transition_bias,
-                setup_type=setup_type
+                setup_type=setup_type,
+                transition_matrix=transition_matrix
             )
         else:
             dataset = CLMNIST(root="./data/mnist", train=False, data_type=data_type, input_dataset=input_dataset)
     elif input_dataset == "FashionMNIST":
         if data_type == "train":
             dataset = CLFashionMNIST(
-                root="./data/FashionMNIST",
+                root="../data/FashionMNIST",
                 train=True,
                 data_type=data_type,
                 download=True,
@@ -296,7 +297,7 @@ def prepare_cluster_dataset(input_dataset, data_type=None, kmean_cluster=None, m
     elif input_dataset == "KMNIST":
         if data_type == "train":
             dataset = CLKMNIST(
-                root="./data/KMNIST",
+                root="../data/KMNIST",
                 train=True,
                 data_type=data_type,
                 download=True,
@@ -316,7 +317,7 @@ def prepare_cluster_dataset(input_dataset, data_type=None, kmean_cluster=None, m
     elif input_dataset == "Tiny200":
         if data_type == "train":
             dataset = CLTiny200(
-                root="./data/tiny200",
+                root="../data/tiny200",
                 train=True,
                 data_type=data_type,
                 download=True,

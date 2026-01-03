@@ -85,7 +85,7 @@ def collect_wandb_runs(wandb_root: str | Path = "wandb") -> pd.DataFrame:
         best_acc = summary.get("best_acc")
         step = int(summary.get("_step", 0))
 
-        if step <= 190:
+        if step <= 60:
             continue
 
         records.append(

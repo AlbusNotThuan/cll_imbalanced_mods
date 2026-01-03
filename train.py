@@ -91,6 +91,7 @@ def train_icm(args):
     cll_type = args.cll_type
     noise = args.noise
     gamma = args.gamma
+    beta = args.beta
     comp_loss_type = args.comp_loss_type
     max_train_samples = args.max_train_samples
     encoder_type = args.encoder_type
@@ -218,7 +219,7 @@ def train_icm(args):
         ba_config=None, mi_config=None , ord_num=args.ord_num
     )
 
-    if algo in ["fwd-u", "fwd-int", "fwd-r", "cpe-f", "cpe-t", "ure-ga", "comb-oc"]:
+    if algo in ["fwd-u", "fwd-int", "fwd-r", "cpe-f", "cpe-t", "ure-ga", "ure-tga", "ure-tnn", "comb-oc"]:
         dataset_T, class_count = get_dataset_T(trainset, num_classes)
         class_count = torch.tensor(class_count, dtype=torch.float).to(device)
 
@@ -230,7 +231,7 @@ def train_icm(args):
         for i in range(num_classes):
             Q[i][i] = 0
 
-    elif algo in ["fwd-r", "ure-ga"]:
+    elif algo in ["fwd-r", "ure-ga", "ure-tga", "ure-tnn"]:
         # Print the complementary label distribution T
         dataset_T = torch.tensor(dataset_T, dtype=torch.float).to(device)
         Q = dataset_T
@@ -372,7 +373,6 @@ def train_icm(args):
                     _input_mix, target_a, target_b, _, lam = mamix_intra_aug(inputs, labels, k_mean_targets, mamix_ratio, cls_num_list, device)
                 else:  # Original Mixup without clustering and filtering
                     #----MIXUP ORIGINAL
-<<<<<<< HEAD
                     _input_mix, target_a, target_b, lam = mixup_data(inputs, labels)
                     # #----MIXUP ORIGINAL COUNT ERROR----
                     # _input_mix, target_a, target_b, lam, count_error = mixup_cl_data_count_error(inputs, labels, true_labels, device)
@@ -384,17 +384,6 @@ def train_icm(args):
                     # total_count_error += count_error
                     # Fix: pass ytrue, device, and alpha when doing default mixup
                     # _input_mix, target_a, target_b, lam = mixup_cl_data(inputs, labels, true_labels, device, alpha)
-=======
-                    # _input_mix, target_a, target_b, lam = mixup_data(inputs, labels)
-                    #----MIXUP ORIGINAL COUNT ERROR----
-                    # _input_mix, target_a, target_b, lam, count_error = mixup_cl_data_count_error(inputs, labels, true_labels, device)
-                    # target_a, target_b = target_a.type(torch.LongTensor),  target_b.type(torch.LongTensor)  # casting to long
-                    # target_a, target_b = target_a.to(device), target_b.to(device)
-                    # total_count_error += count_error
-                    #----MIXUP INTRA CLASS COUNT ERROR----
-                    _input_mix, target_a, target_b, lam, count_error = intra_class_count_error(inputs, labels, true_labels, k_mean_targets, device, dataset_name)
-                    total_count_error += count_error
->>>>>>> 8d4b62626e313267807cbbdce3a9226630bf2055
 
                 # Move only the inner tensors to the specified device
                 output_mix = model(_input_mix)
@@ -519,12 +508,11 @@ def train_icm(args):
                     w = torch.mul(p / (outputs.shape[1] - 1), q.log())
                     labels = labels.squeeze()
                     loss = F.nll_loss(q.log(), labels.long(), weights) + F.nll_loss(w, labels.long(), weights)
-                elif algo == "ure-ga":
+                elif algo[:3] == "ure":
                     if torch.det(Q) != 0:
                         Tinv = torch.inverse(Q)
                     else:
                         Tinv = torch.pinverse(Q)
-
                     neglog = -F.log_softmax(outputs, dim=1)
                     labels = labels.squeeze()
                     l = labels.long()
@@ -534,10 +522,12 @@ def train_icm(args):
                     loss_vec = (Tinv.to(device) * neg_vector).sum(dim=1) * class_count
                     vc = (1 / counts).nan_to_num(0).view(-1)
                     loss_vec = loss_vec * vc
-                    if loss_vec.min() > 0:
-                        loss = loss_vec.sum()
-                    else:
-                        loss = F.relu(-loss_vec).sum()
+                    loss = loss_vec[loss_vec > -beta].sum()
+
+                    if algo == "ure-ga" or algo == "ure-tga":
+                        # TGA: Truncated GA with beta=infinity
+                        if torch.min(loss_vec) < 0:
+                            loss = -loss_vec[loss_vec < 0].sum()
 
                 elif algo == "mcl-exp":
                     labels = labels.squeeze().long()
@@ -891,7 +881,9 @@ if __name__ == "__main__":
         "cpe-i",
         "cpe-t",
         "cpe-f",
-        "comb-oc"
+        "comb-oc",
+        "ure-tnn",
+        "ure-tga"
     ]
 
     model_list = [
@@ -974,16 +966,16 @@ if __name__ == "__main__":
     parser.add_argument('--algo', type=str, choices=algo_list, help='Algorithm')
     parser.add_argument('--dataset_name', type=str, choices=dataset_list, help='Dataset name', default='cifar10')
     parser.add_argument('--model', type=str, choices=model_list, help='Model name', default='resnet18')
-    parser.add_argument('--lr', type=float, help='Learning rate', default=1e-4)
-    parser.add_argument('--weight_decay', type=float, default=1e-4)
+    parser.add_argument('--lr', type=float, help='Learning rate', default=1e-3)
+    parser.add_argument('--weight_decay', type=float, default=1e-5)
     parser.add_argument('--seed', type=int, help='Random seed', default=1126)
-    parser.add_argument('--data_aug', type=str, default='false')
+    parser.add_argument('--data_aug', type=str, default='true')
     parser.add_argument('--max_train_samples', type=int, default=None)
     parser.add_argument('--evaluate_step', type=int, default=10)
     parser.add_argument("--hidden_dim", type=int, default=500)
-    parser.add_argument('--k_cluster', type=int, default=0)
-    parser.add_argument('--n_epoch', type=int, default=200)
-    parser.add_argument('--warm_epoch', type=int, default=160)
+    parser.add_argument('--k_cluster', type=int, default=0) 
+    parser.add_argument('--n_epoch', type=int, default=80)
+    parser.add_argument('--warm_epoch', type=int, default=64)
     parser.add_argument('--batch_size', type=int, default=512)
     parser.add_argument('--multi_label', action='store_true')
     parser.add_argument('--imb_type', type=str, default='exp')
@@ -1001,6 +993,7 @@ if __name__ == "__main__":
     parser.add_argument('--neighbor', type=str, default='false')
     parser.add_argument('--weight', type=str, choices=weight_list, help='rank or distance')
     parser.add_argument('--alpha', type=float, default=1.0, help='Alpha parameter for Beta/Dirichlet mixup distributions (sampling lam). Typical values: 0.2, 0.4, 1.0')
+    parser.add_argument('--beta', type=float, default=0.0, help='Beta threshold for URE-TNN algorithm (truncation threshold). Use 0 for hard truncation, positive values for soft truncation')
     parser.add_argument('--transition_bias', type=float, default=1.0)
     parser.add_argument('--setup_type', type=str, choices=setup_list, help='problem setup', default='setup 1')
     parser.add_argument('--transition_matrix', type=str, default=None, help='Path to transition matrix file (.npy or .txt). If not provided, will auto-load from transition_matrix/')

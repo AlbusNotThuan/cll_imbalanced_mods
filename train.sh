@@ -16,38 +16,6 @@ source ~/miniconda3/etc/profile.d/conda.sh
 conda activate cll
 
 # # Run mising run 
-<<<<<<< HEAD
-# for run in {1..2}; do
-#     echo "Running missing run ${run}/2 for imb_factor=${IMB_FACTOR}"
-#     python train.py \
-#             --algo scl-nl \
-#             --dataset_name CIFAR10 \
-#             --model resnet18 \
-#             --imb_type exp \
-#             --imb_factor ${IMB_FACTOR} \
-#             --mixup true \
-#             --alpha 0.4 \
-#             --new_data_aug none \
-#             --data_aug true \
-#             --aug_type flipflop \
-#             --gpu 3
-# done
-
-# python train.py \
-#             --algo fwd-int \
-#             --dataset_name CIFAR20 \
-#             --model resnet18 \
-#             --imb_type exp \
-#             --imb_factor ${IMB_FACTOR} \
-#             --mixup true \
-#             --alpha 0.1 \
-#             --new_data_aug icm \
-#             --k_cluster 50 \
-#             --gpu 3 \
-#             --data_aug true \
-#             --aug_type flipflop \
-            
-=======
 # python train.py \
 #         --algo "fwd-int" \
 #         --dataset_name MNIST \
@@ -61,20 +29,14 @@ conda activate cll
 #         --data_aug true \
 #         --aug_type flipflop \
 #         --gpu 1
->>>>>>> 8d4b62626e313267807cbbdce3a9226630bf2055
 
 
 # Define parameter arrays
 # ALGOS=("scl-nl" "fwd-int" "scl-exp" "lw")
-<<<<<<< HEAD
 # NEW_DATA_AUGS=("icm" "none")
 ALGOS=("scl-nl" "fwd-int")
 # ALGOS=("scl-exp" "lw")
 NEW_DATA_AUGS=("none" "icm")
-=======
-ALGOS=("scl-nl" "fwd-int" "scl-exp" "lw")
-NEW_DATA_AUGS=("icm" "none")
->>>>>>> 8d4b62626e313267807cbbdce3a9226630bf2055
 
 echo "Using imb_factor=${IMB_FACTOR}"
 
@@ -86,40 +48,19 @@ for algo in "${ALGOS[@]}"; do
         # Run each configuration 3 times
         for run in {1..3}; do
             echo "Run ${run}/3 for imb_factor=${IMB_FACTOR}, algo=${algo}, new_data_aug=${new_data_aug}"
-<<<<<<< HEAD
-            # Build the command and omit --k_cluster when new_data_aug is 'none'
-            EXTRA_ARGS=""
-            if [ "$new_data_aug" != "none" ]; then
-                EXTRA_ARGS="--k_cluster 50"
-            fi
-
-            python train.py \
-            --algo=${algo} \
-            --dataset_name CIFAR20 \
-=======
             python train.py \
             --algo=${algo} \
             --dataset_name PCLCIFAR20 \
->>>>>>> 8d4b62626e313267807cbbdce3a9226630bf2055
             --model resnet18 \
             --imb_type exp \
             --imb_factor ${IMB_FACTOR} \
             --mixup true \
-<<<<<<< HEAD
-            --alpha 0.1 \
-            ${EXTRA_ARGS} \
-            --new_data_aug ${new_data_aug} \
-            --gpu 3 \
-            --data_aug true \
-            --aug_type flipflop
-=======
             --alpha 0.2 \
             --k_cluster 50 \
             --new_data_aug ${new_data_aug} \
             --data_aug true \
             --aug_type flipflop \
             --gpu 1
->>>>>>> 8d4b62626e313267807cbbdce3a9226630bf2055
         done
     done
 done

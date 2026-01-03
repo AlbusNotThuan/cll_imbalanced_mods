@@ -200,6 +200,8 @@ class CLTiny200(VisionDataset, BaseDataset):
                     ])
             else:
                 self.transform = Compose([
+                    RandomCrop(64, padding=8),
+                    RandomHorizontalFlip(),
                     ToTensor(),
                     Normalize(mean=self.mean, std=self.std),
                 ])
