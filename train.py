@@ -9,7 +9,7 @@ from imb_cll.dataset.dataset import prepare_cluster_dataset, prepare_neighbour_d
 from imb_cll.utils.utils import AverageMeter, validate, compute_metrics_and_record, weighting_calculation, num_img_per_class, adjust_learning_rate, get_dataset_T
 from imb_cll.utils.metrics import accuracy
 from imb_cll.utils.cl_augmentation import mixup_cl_data, mixup_data, aug_intra_class, mamix_intra_aug, aug_intra_class_three_images, aug_intra_class_four_images, intra_class_count_error, mixup_cl_data_count_error
-from imb_cll.models.models import get_modified_resnet18, get_resnet18
+from imb_cll.models.models import get_modified_resnet18, get_resnet18, get_resnet34
 from imb_cll.models.basemodels import Linear, MLP
 import wandb
 import os
@@ -273,6 +273,8 @@ def train_icm(args):
         model = MLP(input_dim=input_dim,hidden_dim=args.hidden_dim,num_classes=num_classes).to(device)
     elif args.model == "linear":
         model = Linear(input_dim=input_dim,num_classes=num_classes).to(device)
+    elif args.model == "resnet34":
+        model = get_resnet34(num_classes, input_dataset).to(device)
     else:
         raise NotImplementedError
     
@@ -711,144 +713,7 @@ def train_icm(args):
     
     wandb.finish()
             
-def train_nn(args):
-    device = torch.device(f'cuda:{args.gpu}')
-    algo = args.algo
-    model = args.model
-    weight = args.weight
-    lr = args.lr
-    seed = args.seed
-    data_aug = True if args.data_aug.lower()=="true" else False
-    neighbor = True if args.neighbor.lower()=="true" else False
 
-    epochs = args.n_epoch
-    input_dataset = args.dataset_name
-
-    eval_n_epoch = args.evaluate_step
-    batch_size = args.batch_size
-    n_weight = args.weighting
-    imb_factor = args.imb_factor
-    imb_type = args.imb_type
-    best_acc1 = 0.
-
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-
-    if data_aug:
-        print("Use data augmentation.")
-
-    weights, pretrain = weighting_calculation(input_dataset, imb_factor, n_weight)
-    # if neighbor:
-    print("Use prepare_neighbour_dataset")
-    train_data = "train"
-    trainset, input_dim, num_classes = prepare_neighbour_dataset(input_dataset=input_dataset, data_type=train_data, max_train_samples=None, multi_label=False, 
-                                    weight=weight, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain)
-    test_data = "test"
-    testset, input_dim, num_classes = prepare_neighbour_dataset(input_dataset=input_dataset, data_type=test_data, max_train_samples=None, multi_label=False, 
-                                    weight=weight, imb_type=imb_type, imb_factor=imb_factor, pretrain=pretrain)
-
-    trainloader = DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=num_workers, drop_last=True)
-    testloader = DataLoader(testset, batch_size=batch_size, shuffle=False, num_workers=num_workers, drop_last=True)
-
-    if args.model == "resnet18":
-        model = get_resnet18(num_classes, input_dataset).to(device)
-    elif args.model == "m-resnet18":
-        model = get_modified_resnet18(num_classes, input).to(device)
-    elif args.model == "mlp":
-        model = MLP(input_dim=input_dim, hidden_dim=args.hidden_dim, num_classes=num_classes).to(device)
-    elif args.model == "linear":
-        model = Linear(input_dim=input_dim, num_classes=num_classes).to(device)
-    else:
-        raise NotImplementedError
-
-    for epoch in range(0, epochs):
-        # learning_rate = adjust_learning_rate(epochs, epoch, lr)
-        learning_rate = lr
-        training_loss = 0.0
-        model.train()
-
-        weights = weights.to(device)
-
-        # For confusion matrix
-        all_preds = list()
-        all_targets = list()
-
-        # Record
-        losses = AverageMeter('Loss', ':.4e')
-        top1 = AverageMeter('Acc@1', ':6.2f')
-        top5 = AverageMeter('Acc@5', ':6.2f')
-
-        # learning_rate = lr 
-        optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
-
-        for i, (inputs, true_labels, labels) in enumerate(trainloader):
-            inputs, true_labels, labels = inputs.to(device), true_labels.to(device), labels.to(device)
-
-            # Two kinds of output
-            optimizer.zero_grad()
-            outputs = model(inputs)
-
-            if algo == "scl-exp":
-                outputs = F.softmax(outputs, dim=1)
-                labels = labels.squeeze()
-                loss = -F.nll_loss(outputs.exp(), labels, weights)
-            elif algo == "scl-nl":
-                if neighbor:
-                    # --------For soft label-------------
-                    # p = (1-F.softmax(outputs,1)).clamp(1e-8,1-1e-8).log()
-                    p = (1-F.softmax(outputs,1)).clamp(1e-6,1-1e-6).log()
-                    loss = (-p * labels).sum(-1).mean()
-                else:
-                    #--------For hard label-------------
-                    p = (1 - F.softmax(outputs, dim=1) + 1e-6).log()
-                    labels = labels.squeeze()
-                    loss = F.nll_loss(p, labels, weights)
-            else:
-                raise NotImplementedError
-
-            acc1, acc5 = accuracy(outputs, true_labels, topk=(1, 5))
-            all_targets.extend(true_labels.cpu().numpy())
-
-            _, pred = torch.max(outputs, 1)
-            all_preds.extend(pred.cpu().numpy())
-
-            # Measure accuracy and record loss
-            losses.update(loss.item(), inputs.size(0))
-            top1.update(acc1[0], inputs.size(0))
-            top5.update(acc5[0], inputs.size(0))
-
-            # Optimizer
-            loss.backward()
-            optimizer.step()
-            training_loss += loss.item()
-
-            if i % eval_n_epoch == 0:
-                output = ('Epoch: [{0}][{1}/{2}], lr: {lr:.5f}\t'
-                        'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                        'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
-                        'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-                            epoch,
-                            i,
-                            len(trainloader),
-                            loss=losses,
-                            top1=top1,
-                            top5=top5,
-                            lr=learning_rate))
-                print(output)
-        
-        compute_metrics_and_record(all_preds,
-                                all_targets,
-                                losses,
-                                top1,
-                                top5,
-                                flag='Training')
-        
-        acc1 = validate(model, testloader, eval_n_epoch, epoch, device)
-        is_best = acc1 > best_acc1
-        best_acc1 = max(acc1, best_acc1)
-        output_best = 'Best Prec@1: %.3f\n' % (best_acc1)
-        print(output_best)
-              
 
 if __name__ == "__main__":
     # print(torch.__version__)
@@ -890,7 +755,8 @@ if __name__ == "__main__":
         "resnet18",
         "m-resnet18",
         "linear",
-        "mlp"
+        "mlp",
+        "resnet34"
     ]
 
     weight_list = [
@@ -974,8 +840,8 @@ if __name__ == "__main__":
     parser.add_argument('--evaluate_step', type=int, default=10)
     parser.add_argument("--hidden_dim", type=int, default=500)
     parser.add_argument('--k_cluster', type=int, default=0) 
-    parser.add_argument('--n_epoch', type=int, default=80)
-    parser.add_argument('--warm_epoch', type=int, default=64)
+    parser.add_argument('--n_epoch', type=int, default=200)
+    parser.add_argument('--warm_epoch', type=int, default=160)
     parser.add_argument('--batch_size', type=int, default=512)
     parser.add_argument('--multi_label', action='store_true')
     parser.add_argument('--imb_type', type=str, default='exp')
@@ -1065,7 +931,5 @@ if __name__ == "__main__":
     }
     
     neighbor = True if args.neighbor.lower()=="true" else False
-    if neighbor:
-        train_nn(args)
-    else:
-        train_icm(args)
+
+    train_icm(args)

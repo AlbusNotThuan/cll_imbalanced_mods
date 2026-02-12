@@ -18,6 +18,21 @@ def get_resnet18(num_classes, input_dataset):
     resnet.fc = nn.Linear(num_ftrs, num_classes)
     return resnet
 
+def get_resnet34(num_classes, input_dataset):
+    resnet = torchvision.models.resnet34()
+    if input_dataset in ('MNIST', 'FashionMNIST', 'KMNIST'):
+        num_channel = 1
+    else:
+        num_channel = 3
+    print("------------------------------------")
+    print("num channel {}, data type {}".format(num_channel, input_dataset))
+    print("------------------------------------")
+    resnet.conv1 = nn.Conv2d(num_channel, 64, kernel_size=3, stride=1, padding=1, bias=False)
+    nn.init.kaiming_normal_(resnet.conv1.weight, mode="fan_out", nonlinearity="relu")
+    num_ftrs = resnet.fc.in_features
+    resnet.fc = nn.Linear(num_ftrs, num_classes)
+    return resnet
+
 def get_modified_resnet18(num_classes, input_dataset):
     resnet = torchvision.models.resnet18(weights=None)
     resnet.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)

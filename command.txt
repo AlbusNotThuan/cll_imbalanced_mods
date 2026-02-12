@@ -5,4 +5,4 @@ python train.py --algo=comb-oc --dataset_name CIFAR10 --setup_type Dbar_T --ord_
 
 python train.py --algo=fwd-int --dataset_name CIFAR20 --setup_type Dbar[prompt]_T --cll_type clip_llava_top_most --gpu 0
 
-python train.py --algo=cpe-f --dataset_name CIFAR10 --setup_type Dbar[prompt]_T --cll_type llava-random --gpu 0
+python train.py --algo=cpe-f --dataset_name CIFAR10 --setup_type Dbar[prompt]_T --cll_type llava_kmean=10_nrand=4 --gpu 0

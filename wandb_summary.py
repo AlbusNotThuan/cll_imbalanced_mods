@@ -84,6 +84,8 @@ def collect_wandb_runs(wandb_root: str | Path = "wandb") -> pd.DataFrame:
         cll_type = args_map.get("cll_type")
         best_acc = summary.get("best_acc")
         step = int(summary.get("_step", 0))
+        model = args_map.get("model")
+        ord_num = args_map.get("ord_num")
 
         if step <= 60:
             continue
@@ -95,6 +97,8 @@ def collect_wandb_runs(wandb_root: str | Path = "wandb") -> pd.DataFrame:
                 "algo": algo,
                 "cll_type": cll_type,
                 "best_acc": best_acc,
+                "model": model,
+                "ord_num": ord_num,
             }
         )
 
